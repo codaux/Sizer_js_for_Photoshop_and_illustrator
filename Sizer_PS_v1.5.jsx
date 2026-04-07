@@ -593,7 +593,7 @@ function buildReportHtml(reportMeta, reportRows) {
     html.push("</style>");
     html.push("<script language='javascript'>");
     html.push("function fitThumb(img,maxW,maxH){try{var w=img.width||img.offsetWidth||1;var h=img.height||img.offsetHeight||1;if(!w||!h)return;var r=Math.min(maxW/w,maxH/h);img.width=Math.max(1,Math.round(w*r));img.height=Math.max(1,Math.round(h*r));}catch(e){}}");
-    html.push("var sortState={key:'',asc:true};function statusSortValue(s){if(s==='MISSING_FILE')return 10;if(s==='NOT OK')return 30;if(s==='CHECK')return 40;if(s==='OK')return 50;return 20;}function sortReport(key){var tbody=document.getElementById('report-body');var rows=[];for(var i=0;i<tbody.rows.length;i++)rows.push(tbody.rows[i]);if(sortState.key===key)sortState.asc=!sortState.asc;else{sortState.key=key;sortState.asc=true;}rows.sort(function(a,b){var av='',bv='';if(key==='status'){av=parseFloat(a.getAttribute('data-status-sort')||'999');bv=parseFloat(b.getAttribute('data-status-sort')||'999');}else if(key==='print'){av=(a.getAttribute('data-print-sort')||'').toLowerCase();bv=(b.getAttribute('data-print-sort')||'').toLowerCase();}else if(key==='delta'){av=parseFloat(a.getAttribute('data-delta-sort')||'0');bv=parseFloat(b.getAttribute('data-delta-sort')||'0');}else if(key==='qty'){av=parseFloat(a.getAttribute('data-qty-sort')||'0');bv=parseFloat(b.getAttribute('data-qty-sort')||'0');}else if(key==='price'){av=parseFloat(a.getAttribute('data-price-sort')||'0');bv=parseFloat(b.getAttribute('data-price-sort')||'0');}else if(key==='file'){av=(a.getAttribute('data-file-sort')||'').toLowerCase();bv=(b.getAttribute('data-file-sort')||'').toLowerCase();}else return 0;if(av<bv)return sortState.asc?-1:1;if(av>bv)return sortState.asc?1:-1;var ai=parseInt(a.getAttribute('data-row-index')||'0',10);var bi=parseInt(b.getAttribute('data-row-index')||'0',10);return ai-bi;});for(var j=0;j<rows.length;j++){tbody.appendChild(rows[j]);rows[j].cells[0].innerHTML=String(j+1);}var headers=document.getElementsByTagName('th');for(var h=0;h<headers.length;h++){var k=headers[h].getAttribute('data-key');var ind=headers[h].getElementsByClassName('sort-ind');if(ind&&ind[0])ind[0].innerHTML=(k===sortState.key?(sortState.asc?'▲':'▼'):'');}}function toggleReviewed(cb){var tr=cb;while(tr&&tr.tagName!=='TR')tr=tr.parentNode;if(!tr)return;if(cb.checked)tr.className+=' review-muted';else tr.className=tr.className.replace(/\\breview-muted\\b/g,'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'');}");
+    html.push("var sortState={key:'',asc:true};function statusSortValue(s){if(s==='MISSING_FILE')return 10;if(s==='NOT OK')return 30;if(s==='CHECK')return 40;if(s==='OK')return 50;return 20;}function sortReport(key){var tbody=document.getElementById('report-body');var rows=[];for(var i=0;i<tbody.rows.length;i++)rows.push(tbody.rows[i]);if(sortState.key===key)sortState.asc=!sortState.asc;else{sortState.key=key;sortState.asc=true;}rows.sort(function(a,b){var av='',bv='';if(key==='status'){av=parseFloat(a.getAttribute('data-status-sort')||'999');bv=parseFloat(b.getAttribute('data-status-sort')||'999');}else if(key==='print'){av=(a.getAttribute('data-print-sort')||'').toLowerCase();bv=(b.getAttribute('data-print-sort')||'').toLowerCase();}else if(key==='delta'){av=parseFloat(a.getAttribute('data-delta-sort')||'0');bv=parseFloat(b.getAttribute('data-delta-sort')||'0');}else if(key==='qty'){av=parseFloat(a.getAttribute('data-qty-sort')||'0');bv=parseFloat(b.getAttribute('data-qty-sort')||'0');}else if(key==='price'){av=parseFloat(a.getAttribute('data-price-sort')||'0');bv=parseFloat(b.getAttribute('data-price-sort')||'0');}else if(key==='file'){av=(a.getAttribute('data-file-sort')||'').toLowerCase();bv=(b.getAttribute('data-file-sort')||'').toLowerCase();}else return 0;if(av<bv)return sortState.asc?-1:1;if(av>bv)return sortState.asc?1:-1;var ai=parseInt(a.getAttribute('data-row-index')||'0',10);var bi=parseInt(b.getAttribute('data-row-index')||'0',10);return ai-bi;});for(var j=0;j<rows.length;j++){tbody.appendChild(rows[j]);rows[j].cells[0].innerHTML=String(j+1);}var headers=document.getElementsByTagName('th');for(var h=0;h<headers.length;h++){var k=headers[h].getAttribute('data-key');var ind=headers[h].getElementsByClassName('sort-ind');if(ind&&ind[0])ind[0].innerHTML=(k===sortState.key?(sortState.asc?'&uarr;':'&darr;'):'');}}function toggleReviewed(cb){var tr=cb;while(tr&&tr.tagName!=='TR')tr=tr.parentNode;if(!tr)return;if(cb.checked)tr.className+=' review-muted';else tr.className=tr.className.replace(/\\breview-muted\\b/g,'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'');}");
     html.push("</script></head><body><div class='page'>");
     html.push("<h1>DTF Export Report</h1>");
     html.push("<div class='meta'>");
@@ -1118,6 +1118,11 @@ if (dlg.show() !== 1) {
                         pricingPath = pricingResult.path;
                     }
 
+                    var reportName = reportPath ? File(reportPath).name : "_Export_REPORT.html";
+                    var logName = logPath ? File(logPath).name : "_Export_LOG.txt";
+                    var proofName = proofPath ? File(proofPath).name : "_Customer_Proof.html";
+                    var pricingName = pricingPath ? File(pricingPath).name : "_Pricing_Audit.html";
+
                     var msg = "Done!\n"
                         + "Mode: " + formatResizeModeLabel(resizeMode) + "\n"
                         + "DPI: " + TARGET_DPI + "\n"
@@ -1125,10 +1130,10 @@ if (dlg.show() !== 1) {
                         + "Files processed: " + processed + "\n"
                         + "Naming mode: " + formatFilenameFormatLabel(qtyInFilename) + "\n"
                         + "Print type mode: " + formatPrintTypeModeLabel(printTypeMode) + "\n"
-                        + "Report: " + reportPath + "\n"
-                        + "Log: " + logPath;
-                    if (generateProof) msg += "\nProof: " + proofPath;
-                    if (generatePricing) msg += "\nPricing audit: " + pricingPath;
+                        + "Report: " + reportName + " created\n"
+                        + "Log: " + logName + " created";
+                    if (generateProof) msg += "\nProof: " + proofName + " created";
+                    if (generatePricing) msg += "\nPricing audit: " + pricingName + " created";
                     if (missing.length > 0) msg += "\n\nMissing/Problem (" + missing.length + "):\n- " + missing.join("\n- ");
                     if (logWriteWarning) msg += "\n\nLog write note:\n- " + logWriteWarning;
                     if (logWriteError) msg += "\n\nLog write issue:\n- " + logWriteError;
