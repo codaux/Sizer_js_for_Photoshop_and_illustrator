@@ -32,6 +32,16 @@ function safeOpen(fileObj) {
     catch (e) { return null; }
 }
 
+function ensureRgbDocument(doc) {
+    if (!doc) return false;
+    try {
+        if (doc.mode !== DocumentMode.RGB) doc.changeMode(ChangeMode.RGB);
+        return doc.mode === DocumentMode.RGB;
+    } catch (e) {
+        return false;
+    }
+}
+
 function makeBaseWithQtyOption(qty, base, option) {
     qty = parseInt(qty, 10);
     if (isNaN(qty) || qty < 1) qty = 1;
@@ -1172,6 +1182,13 @@ if (dlg.show() !== 1) {
                             }
 
                             try {
+                                if (!ensureRgbDocument(doc)) {
+                                    missing.push(item.file + " (rgb conversion failed)");
+                                    updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "RGB_FAIL"));
+                                    try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseRgbOpen) {}
+                                    continue;
+                                }
+
                                 try { doc.trim(TrimType.TRANSPARENT, true, true, true, true); } catch (eTrim) {}
 
                                 var targetWidthPx = Math.round(item.width * TARGET_DPI);
@@ -1188,6 +1205,13 @@ if (dlg.show() !== 1) {
                                         try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseAction) {}
                                         continue;
                                     }
+                                }
+
+                                if (!ensureRgbDocument(doc)) {
+                                    missing.push(item.file + " (rgb conversion failed)");
+                                    updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "RGB_FAIL"));
+                                    try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseRgbFinal) {}
+                                    continue;
                                 }
 
                                 var outW = doc.width.as("px") / TARGET_DPI;

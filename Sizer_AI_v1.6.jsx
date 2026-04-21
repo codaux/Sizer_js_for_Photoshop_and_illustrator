@@ -14,6 +14,10 @@ function round2(n){ return Math.round(n * 100) / 100; }
 function roundMoney(n){ return Math.round((n + 0.0000001) * 100) / 100; }
 function pad2(n){ return (n < 10 ? "0" : "") + n; }
 function sleepMs(ms){ try { $.sleep(ms); } catch (e) {} }
+function stabilizeIllustratorHost(waitMs){
+    try { app.redraw(); } catch (eRedraw) {}
+    sleepMs(waitMs || 40);
+}
 
 function makeTimestampTag(){
     var d = new Date();
@@ -534,13 +538,23 @@ function boundsSizePt(b){
     return { w: Math.abs(b[2]-b[0]), h: Math.abs(b[1]-b[3]) };
 }
 
-function scaleArtworkItems(items, sx, sy){
+function boundsCenterPt(b){
+    return { x: (b[0] + b[2]) / 2.0, y: (b[1] + b[3]) / 2.0 };
+}
+
+function scaleArtworkItems(items, sx, sy, artworkBounds){
     if (!items || items.length === 0) return { ok: false, scaled: 0, failed: 0 };
 
+    var scaleX = sx / 100.0;
+    var scaleY = sy / 100.0;
+    var artworkCenter = artworkBounds ? boundsCenterPt(artworkBounds) : null;
     var scaled = 0;
     var failed = 0;
     for (var i = 0; i < items.length; i++){
         try{
+            var beforeBounds = items[i].visibleBounds;
+            if (!beforeBounds || beforeBounds.length < 4) throw new Error("bounds unavailable");
+            var beforeCenter = boundsCenterPt(beforeBounds);
             items[i].resize(
                 sx, sy,
                 true,  // changePositions
@@ -550,6 +564,15 @@ function scaleArtworkItems(items, sx, sy){
                 sx,    // changeLineWidths
                 Transformation.CENTER
             );
+
+            if (artworkCenter){
+                var afterBounds = items[i].visibleBounds;
+                if (!afterBounds || afterBounds.length < 4) throw new Error("post-scale bounds unavailable");
+                var afterCenter = boundsCenterPt(afterBounds);
+                var desiredX = artworkCenter.x + ((beforeCenter.x - artworkCenter.x) * scaleX);
+                var desiredY = artworkCenter.y + ((beforeCenter.y - artworkCenter.y) * scaleY);
+                items[i].translate(desiredX - afterCenter.x, desiredY - afterCenter.y, true, true, true, true);
+            }
             scaled++;
         }catch(e){
             failed++;
@@ -577,19 +600,30 @@ function fitArtboardToArtwork(doc, items, paddingPt){
 // CMYK -> RGB (for raster exports)
 function ensureRGB(doc){
     if (!doc) return false;
-    var isRgb = false;
-    try { isRgb = (doc.documentColorSpace === DocumentColorSpace.RGB); } catch (eReadColor1) {}
-    if (isRgb) return true;
+    var beforeKnown = false;
+    var beforeIsRgb = false;
+    try {
+        beforeIsRgb = (doc.documentColorSpace === DocumentColorSpace.RGB);
+        beforeKnown = true;
+    } catch (eReadColor1) {}
+    if (beforeKnown && beforeIsRgb) return true;
 
     try {
         // File > Document Color Mode > RGB Color
         app.executeMenuCommand("doc-color-rgb");
     } catch (eMenuRgb) {}
 
-    try { app.redraw(); } catch (eRedrawRgb) {}
+    stabilizeIllustratorHost(80);
 
-    try { isRgb = (doc.documentColorSpace === DocumentColorSpace.RGB); } catch (eReadColor2) {}
-    return isRgb;
+    var afterKnown = false;
+    var afterIsRgb = false;
+    try {
+        afterIsRgb = (doc.documentColorSpace === DocumentColorSpace.RGB);
+        afterKnown = true;
+    } catch (eReadColor2) {}
+
+    if (afterKnown) return afterIsRgb;
+    return true;
 }
 
 // ---------- ExportForScreens (DPI-aware, closest to "Export As... + Resolution") ----------
@@ -1384,6 +1418,7 @@ try {
                             var doc = null;
                             try {
                                 doc = app.open(matchInfo.file);
+                                stabilizeIllustratorHost(80);
                             } catch(eOpen){
                                 missing.push(item.file + " (failed to open)");
                                 updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "OPEN_FAIL"));
@@ -1391,12 +1426,7 @@ try {
                             }
 
                             try {
-                                if (!ensureRGB(doc)){
-                                    missing.push(item.file + " (rgb conversion failed)");
-                                    updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "RGB_FAIL"));
-                                    try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseRgbOpen) {}
-                                    continue;
-                                }
+                                ensureRGB(doc);
 
                                 if (!unlockAllArtwork(doc)){
                                     missing.push(item.file + " (unlock failed)");
@@ -1423,12 +1453,7 @@ try {
                                     }
                                 }
 
-                                if (!ensureRGB(doc)){
-                                    missing.push(item.file + " (rgb conversion failed)");
-                                    updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "RGB_FAIL"));
-                                    try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseRgbFinal) {}
-                                    continue;
-                                }
+                                ensureRGB(doc);
 
                                 var artworkItems = getTopLevelArtworkItems(doc);
                                 var b0 = getArtworkBounds(artworkItems);
@@ -1450,9 +1475,9 @@ try {
                                 var sx = ((item.width * 72) / cur.w) * 100.0;
                                 var sy = ((item.height * 72) / cur.h) * 100.0;
                                 var scaleResult = null;
-                                if (resizeMode === "respectWidth") scaleResult = scaleArtworkItems(artworkItems, sx, sx);
-                                else if (resizeMode === "respectHeight") scaleResult = scaleArtworkItems(artworkItems, sy, sy);
-                                else scaleResult = scaleArtworkItems(artworkItems, sx, sy);
+                                if (resizeMode === "respectWidth") scaleResult = scaleArtworkItems(artworkItems, sx, sx, b0);
+                                else if (resizeMode === "respectHeight") scaleResult = scaleArtworkItems(artworkItems, sy, sy, b0);
+                                else scaleResult = scaleArtworkItems(artworkItems, sx, sy, b0);
 
                                 if (!scaleResult || !scaleResult.ok){
                                     missing.push(item.file + " (resize failed: " + (scaleResult ? scaleResult.failed : 0) + " items)");
@@ -1492,6 +1517,7 @@ try {
                             }
 
                             try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch(eClose){}
+                            stabilizeIllustratorHost(40);
                         }
 
                         flushReport(true);
