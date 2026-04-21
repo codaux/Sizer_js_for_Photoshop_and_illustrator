@@ -23,8 +23,8 @@ The script then:
 
 There are two host-specific scripts:
 
-- `Sizer_PS_v1.5.jsx` for `Adobe Photoshop`
-- `Sizer_AI_v1.5.jsx` for `Adobe Illustrator`
+- `Sizer_PS_v1.6.jsx` for `Adobe Photoshop`
+- `Sizer_AI_v1.6.jsx` for `Adobe Illustrator`
 
 Both scripts follow the same workflow and produce the same family of reports.
 
@@ -264,15 +264,17 @@ The two scripts are intentionally aligned, but they are still host-specific.
 - Resizes the document directly
 - Can optionally run the `WeMust / WeMust` action
 - Saves the exported output and reports through the `Photoshop` host workflow
+- Prebuilds the full order report before processing so every line item stays visible
 
 ### Illustrator
 
 - Opens files in `Illustrator`
 - Fits and exports through the `Illustrator` document model
 - Restores user interaction state safely
-- Detects locked content and skips those files instead of silently processing them
+- Runs `Object > Unlock All` before processing
+- Resizes top-level artwork directly instead of depending on `Select All`
 
-For locked-content files, `Illustrator` reports the issue instead of pretending everything is fine.
+If a file still cannot be unlocked or a top-level object fails to resize, `Illustrator` reports the file as an error instead of exporting a partial result.
 
 ## Running the Scripts
 
@@ -280,7 +282,7 @@ For locked-content files, `Illustrator` reports the issue instead of pretending 
 
 1. Open `Adobe Photoshop`
 2. Run `File > Scripts > Browse...`
-3. Choose `Sizer_PS_v1.5.jsx`
+3. Choose `Sizer_PS_v1.6.jsx`
 4. Select the artwork folder
 5. Paste the order email
 6. Choose naming, resize, and print-type options
@@ -291,7 +293,7 @@ For locked-content files, `Illustrator` reports the issue instead of pretending 
 
 1. Open `Adobe Illustrator`
 2. Run `File > Scripts > Other Script...`
-3. Choose `Sizer_AI_v1.5.jsx`
+3. Choose `Sizer_AI_v1.6.jsx`
 4. Select the artwork folder
 5. Paste the order email
 6. Choose naming, resize, and print-type options
@@ -324,7 +326,9 @@ This repo contains multiple safeguards added for real production use:
 - fallback text logging
 - safer report writing with fallback behavior
 - explicit missing/problem tracking
-- locked-content detection in `Illustrator`
+- full prebuilt row manifest in the `Photoshop` report
+- forced `unlock all` before `Illustrator` processing
+- direct top-level artwork resize in `Illustrator`
 
 If the richer reports fail to write in a managed environment, `_Export_LOG.txt` is the first file to check.
 
@@ -356,8 +360,8 @@ Current limitations include:
 
 ```text
 Sizer_js_for_Photoshop_and_illustrator/
-├─ Sizer_PS_v1.5.jsx
-├─ Sizer_AI_v1.5.jsx
+├─ Sizer_PS_v1.6.jsx
+├─ Sizer_AI_v1.6.jsx
 ├─ README.md
 └─ AGENTS.md
 ```
@@ -376,8 +380,8 @@ This repo is for print shops, production operators, and internal workflow builde
 
 Current tracked script version in this repo:
 
-- `Sizer_PS_v1.5.jsx`
-- `Sizer_AI_v1.5.jsx`
+- `Sizer_PS_v1.6.jsx`
+- `Sizer_AI_v1.6.jsx`
 
 The project is actively shaped around real shop-floor feedback.
 
