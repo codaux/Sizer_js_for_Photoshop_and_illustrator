@@ -1,12 +1,14 @@
 #target photoshop
 app.bringToFront();
+var oldDisplayDialogs = app.displayDialogs;
+app.displayDialogs = DialogModes.NO;
 
 var TARGET_DPI = 300;
 var RESAMPLE = ResampleMethod.BICUBIC;
 var REPORT_FLUSH_INTERVAL = 5;
 var CHECKPOINT_REPORT_WRITES_ENABLED = false;
-var FILE_WRITE_RETRY_COUNT = 3;
-var FILE_WRITE_RETRY_DELAY_MS = 80;
+var FILE_WRITE_RETRY_COUNT = 8;
+var FILE_WRITE_RETRY_DELAY_MS = 250;
 
 function trimStr(s) { return String(s).replace(/^\s+|\s+$/g, ""); }
 function round2(n) { return Math.round(n * 100) / 100; }
@@ -15,6 +17,11 @@ function pad2(n) { return (n < 10 ? "0" : "") + n; }
 
 function sleepMs(ms) {
     try { $.sleep(ms); } catch (e) {}
+}
+
+function stabilizePhotoshopHost(waitMs) {
+    try { app.refresh(); } catch (eRefresh) {}
+    sleepMs(waitMs || 120);
 }
 
 function formatDiagnosticValue(value) {
@@ -141,6 +148,64 @@ function describeManagedWrite(descriptor) {
     if (!descriptor || !descriptor.path) return "";
     if (descriptor.fallbackUsed) return descriptor.name + " (fallback: " + descriptor.path + ")";
     return descriptor.name;
+}
+
+function safeCreateManagedWriteDescriptor(defaultFileObj, result) {
+    try {
+        return createManagedWriteDescriptor(defaultFileObj, result);
+    } catch (e) {
+        return {
+            ok: !!(result && result.ok),
+            path: result && result.path ? result.path : defaultFileObj.fsName,
+            name: defaultFileObj.name,
+            warning: result && result.warning ? result.warning : "",
+            error: result && result.error ? result.error : safeErrorMessage(e),
+            fallbackUsed: false
+        };
+    }
+}
+
+function safeManagedWrite(defaultFileObj, writerFn, diagnosticsState, eventName) {
+    try {
+        return writerFn();
+    } catch (e) {
+        if (diagnosticsState) {
+            addDiagnostic(diagnosticsState, "error", eventName || "managed_write_failed", {
+                path: defaultFileObj ? defaultFileObj.fsName : "",
+                error: safeErrorMessage(e),
+                stack: safeErrorStack(e)
+            });
+        }
+        return {
+            ok: false,
+            error: safeErrorMessage(e),
+            warning: "",
+            path: defaultFileObj ? defaultFileObj.fsName : ""
+        };
+    }
+}
+
+function safeWriteDiagnosticsFiles(exportFolder, diagnosticsState, baseName) {
+    var textFile = new File(exportFolder.fsName + "/" + baseName + ".txt");
+    var jsonFile = new File(exportFolder.fsName + "/" + baseName + ".json");
+    try {
+        return writeDiagnosticsFiles(exportFolder, diagnosticsState, baseName);
+    } catch (e) {
+        return {
+            text: safeCreateManagedWriteDescriptor(textFile, {
+                ok: false,
+                error: safeErrorMessage(e),
+                warning: "",
+                path: textFile.fsName
+            }),
+            json: safeCreateManagedWriteDescriptor(jsonFile, {
+                ok: false,
+                error: safeErrorMessage(e),
+                warning: "",
+                path: jsonFile.fsName
+            })
+        };
+    }
 }
 
 function makeTimestampTag() {
@@ -864,8 +929,11 @@ function makeMeasuredRow(emailFileName, qty, printType, note, price, currency, m
         orderH: round2(orderH),
         orderSize: formatSize(orderW, orderH),
         outputSize: formatSize(outW, outH),
+        finalSize: formatSize(outW, outH),
         outputW: round2(outW),
         outputH: round2(outH),
+        finalW: round2(outW),
+        finalH: round2(outH),
         thumbPath: thumbPath || "",
         outputFsPath: outputFsPath || "",
         delta: delta,
@@ -891,8 +959,11 @@ function makeStatusRow(emailFileName, qty, printType, note, price, currency, mat
         orderH: round2(orderH),
         orderSize: formatSize(orderW, orderH),
         outputSize: "",
+        finalSize: "",
         outputW: "",
         outputH: "",
+        finalW: "",
+        finalH: "",
         thumbPath: "",
         outputFsPath: "",
         delta: "",
@@ -918,8 +989,11 @@ function makeQueuedRow(emailFileName, qty, printType, note, price, currency, mat
         orderH: round2(orderH),
         orderSize: formatSize(orderW, orderH),
         outputSize: "",
+        finalSize: "",
         outputW: "",
         outputH: "",
+        finalW: "",
+        finalH: "",
         thumbPath: "",
         outputFsPath: "",
         delta: "",
@@ -1012,19 +1086,22 @@ function buildProofHtml(reportMeta, reportRows) {
     var html = [];
     html.push("<!doctype html>");
     html.push("<html><head><meta charset='utf-8'><title>Customer Proof</title><style>");
-    html.push("body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:24px;background:#f6f4ef;color:#1f1f1f;}h1{margin:0 0 8px 0;font-size:26px;}p.meta{margin:0 0 18px 0;color:#555;} .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px;} .card{background:#fff;border:1px solid #ddd;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);break-inside:avoid;overflow:hidden;} .name{font-family:Consolas,Monaco,monospace;font-size:16px;font-weight:bold;margin-bottom:12px;word-break:break-word;} .proof-wrap{display:flex;justify-content:center;margin-top:8px;overflow:hidden;} .proof-frame{position:relative;display:inline-block;padding-left:44px;padding-bottom:36px;max-width:100%;box-sizing:border-box;} .stage{display:inline-flex;align-items:center;justify-content:center;border:1px solid #d4d4d4;cursor:pointer;line-height:0;overflow:hidden;max-width:320px;max-height:320px;box-sizing:border-box;} .stage img{display:block;max-width:320px;max-height:320px;width:auto;height:auto;vertical-align:bottom;} .grid-light{background-color:#f7f7f7;background-image:linear-gradient(45deg,#ececec 25%,transparent 25%),linear-gradient(-45deg,#ececec 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ececec 75%),linear-gradient(-45deg,transparent 75%,#ececec 75%);} .grid-medium{background-color:#ececec;background-image:linear-gradient(45deg,#cfcfcf 25%,transparent 25%),linear-gradient(-45deg,#cfcfcf 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#cfcfcf 75%),linear-gradient(-45deg,transparent 75%,#cfcfcf 75%);} .grid-dark{background-color:#c8c8c8;background-image:linear-gradient(45deg,#8f8f8f 25%,transparent 25%),linear-gradient(-45deg,#8f8f8f 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#8f8f8f 75%),linear-gradient(-45deg,transparent 75%,#8f8f8f 75%);} .grid-light,.grid-medium,.grid-dark{background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0;} .width-guide{position:absolute;left:44px;right:0;bottom:0;text-align:center;font-size:20px;font-weight:bold;line-height:1.1;} .height-guide{position:absolute;left:0;top:0;bottom:36px;width:34px;display:flex;align-items:center;justify-content:center;} .height-guide span{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg);font-size:20px;font-weight:bold;line-height:1.1;} .empty{padding:24px;background:#fff;border:1px dashed #ccc;}");
+    html.push("body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:24px;background:#f6f4ef;color:#1f1f1f;}h1{margin:0 0 8px 0;font-size:26px;}p.meta{margin:0 0 8px 0;color:#555;}p.help{margin:0 0 18px 0;color:#555;font-size:12px;} .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px;} .card{background:#fff;border:1px solid #ddd;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);break-inside:avoid;overflow:hidden;} .name{font-family:Consolas,Monaco,monospace;font-size:16px;font-weight:bold;margin-bottom:12px;word-break:break-word;} .proof-wrap{display:flex;justify-content:center;margin-top:8px;overflow:hidden;} .proof-frame{position:relative;display:inline-block;padding-left:44px;padding-bottom:36px;max-width:100%;box-sizing:border-box;} .stage{display:inline-flex;align-items:center;justify-content:center;border:1px solid #d4d4d4;cursor:pointer;line-height:0;overflow:hidden;max-width:320px;max-height:320px;box-sizing:border-box;} .stage img{display:block;max-width:320px;max-height:320px;width:auto;height:auto;vertical-align:bottom;} .grid-light{background-color:#f7f7f7;background-image:linear-gradient(45deg,#ececec 25%,transparent 25%),linear-gradient(-45deg,#ececec 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ececec 75%),linear-gradient(-45deg,transparent 75%,#ececec 75%);} .grid-medium{background-color:#ececec;background-image:linear-gradient(45deg,#cfcfcf 25%,transparent 25%),linear-gradient(-45deg,#cfcfcf 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#cfcfcf 75%),linear-gradient(-45deg,transparent 75%,#cfcfcf 75%);} .grid-dark{background-color:#c8c8c8;background-image:linear-gradient(45deg,#8f8f8f 25%,transparent 25%),linear-gradient(-45deg,#8f8f8f 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#8f8f8f 75%),linear-gradient(-45deg,transparent 75%,#8f8f8f 75%);} .grid-light,.grid-medium,.grid-dark{background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0;} .width-guide{position:absolute;left:44px;right:0;bottom:0;text-align:center;font-size:20px;font-weight:bold;line-height:1.1;} .height-guide{position:absolute;left:0;top:0;bottom:36px;width:34px;display:flex;align-items:center;justify-content:center;} .height-guide span{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg);font-size:20px;font-weight:bold;line-height:1.1;} .empty{padding:24px;background:#fff;border:1px dashed #ccc;}");
     html.push("</style><script>");
     html.push("function cycleGrid(el){var cls=['grid-light','grid-medium','grid-dark'];var idx=parseInt(el.getAttribute('data-grid-index')||'0',10);el.className=el.className.replace(/grid-light|grid-medium|grid-dark/g,'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'');idx=(idx+1)%cls.length;el.className+=(el.className?' ':'')+cls[idx];el.setAttribute('data-grid-index',String(idx));}");
     html.push("</script></head><body>");
     html.push("<h1>Customer Proof</h1>");
     html.push("<p class='meta'>App: " + escHtml(reportMeta.appName) + " | Date: " + escHtml(reportMeta.date) + "</p>");
+    html.push("<p class='help'>Dimensions shown on each proof are the final measured export size, not the order size from the email.</p>");
     html.push("<div class='grid'>");
     var count = 0;
     for (var i = 0; i < reportRows.length; i++) {
         var row = reportRows[i];
-        if (!row.thumbPath || row.status === "BAD_WIDTH_HEIGHT" || row.status === "MISSING_FILE" || row.status === "OPEN_FAIL" || row.status === "ACTION_FAIL" || row.status === "PROCESS_ERROR") continue;
+        var proofW = row.finalW !== undefined ? row.finalW : row.outputW;
+        var proofH = row.finalH !== undefined ? row.finalH : row.outputH;
+        if (!row.thumbPath || proofW === "" || proofH === "" || isNaN(proofW) || isNaN(proofH) || row.status === "BAD_WIDTH_HEIGHT" || row.status === "MISSING_FILE" || row.status === "OPEN_FAIL" || row.status === "ACTION_FAIL" || row.status === "PROCESS_ERROR") continue;
         var proofUrl = toUrlPath(row.thumbPath);
-        html.push("<section class='card'><div class='name'>" + escHtml(row.file) + "</div><div class='proof-wrap'><div class='proof-frame'><div class='height-guide'><span>" + escHtml(row.outputH) + " in</span></div><div class='stage grid-medium' data-grid-index='1' onclick='cycleGrid(this)'><img src='" + escHtml(proofUrl) + "' alt='proof'></div><div class='width-guide'>" + escHtml(row.outputW) + " in</div></div></div></section>");
+        html.push("<section class='card'><div class='name'>" + escHtml(row.file) + "</div><div class='proof-wrap'><div class='proof-frame'><div class='height-guide'><span>" + escHtml(proofH) + " in</span></div><div class='stage grid-medium' data-grid-index='1' onclick='cycleGrid(this)'><img src='" + escHtml(proofUrl) + "' alt='proof'></div><div class='width-guide'>" + escHtml(proofW) + " in</div></div></div></section>");
         count++;
     }
     if (!count) html.push("<div class='empty'>No exported images available for proof.</div>");
@@ -1058,9 +1135,11 @@ function buildPricingAuditHtml(reportMeta, reportRows) {
     html.push("<table><thead><tr><th>#</th><th>Print</th><th>File</th><th>W Old</th><th>H Old</th><th>Qty Old</th><th>Detected</th><th>W New</th><th>H New</th><th>Qty New</th><th>Current Price</th><th>Adjusted Price</th><th>Diff</th></tr></thead><tbody id='audit-body'>");
     for (var i = 0; i < reportRows.length; i++) {
         var row = reportRows[i];
-        var defaultW = row.outputW !== "" && !isNaN(row.outputW) ? row.outputW : (!isNaN(row.orderW) ? row.orderW : "");
-        var defaultH = row.outputH !== "" && !isNaN(row.outputH) ? row.outputH : (!isNaN(row.orderH) ? row.orderH : "");
-        var detected = (row.outputW !== "" && row.outputH !== "") ? formatSize(row.outputW, row.outputH) : "--";
+        var measuredW = row.finalW !== undefined ? row.finalW : row.outputW;
+        var measuredH = row.finalH !== undefined ? row.finalH : row.outputH;
+        var defaultW = measuredW !== "" && !isNaN(measuredW) ? measuredW : (!isNaN(row.orderW) ? row.orderW : "");
+        var defaultH = measuredH !== "" && !isNaN(measuredH) ? measuredH : (!isNaN(row.orderH) ? row.orderH : "");
+        var detected = (measuredW !== "" && measuredH !== "" && !isNaN(measuredW) && !isNaN(measuredH)) ? formatSize(measuredW, measuredH) : "--";
         html.push("<tr data-sort-index='" + escHtml(i) + "' data-order-w='" + escHtml(row.orderW) + "' data-order-h='" + escHtml(row.orderH) + "' data-order-qty='" + escHtml(row.qty) + "' data-price='" + escHtml(isNaN(row.price) ? "" : roundMoney(row.price)) + "' data-currency='" + escHtml(row.currency || reportMeta.currency || "$") + "'>");
         html.push("<td>" + escHtml(i + 1) + "</td><td>" + escHtml(row.printType) + "</td><td class='mono'>" + escHtml(row.file) + "<div class='small'>" + escHtml(row.note || "") + "</div></td><td>" + escHtml(row.orderW) + "</td><td>" + escHtml(row.orderH) + "</td><td class='qty-old'>" + escHtml(row.qty) + "</td><td>" + escHtml(detected) + "</td><td><input class='num-input adj-w' type='number' step='0.01' value='" + escHtml(defaultW) + "'></td><td><input class='num-input adj-h' type='number' step='0.01' value='" + escHtml(defaultH) + "'></td><td><input class='num-input adj-q' type='number' step='1' value='" + escHtml(row.qty) + "'></td><td class='right'>" + escHtml(formatMoney(row.price, row.currency || reportMeta.currency)) + "</td><td class='adjusted-price right'>--</td><td class='price-diff right money-zero'>--</td>");
         html.push("</tr>");
@@ -1121,6 +1200,7 @@ function writeTextFile(fileObj, text) {
     for (var attempt = 0; attempt < FILE_WRITE_RETRY_COUNT; attempt++) {
         var opened = false;
         try {
+            stabilizePhotoshopHost(attempt === 0 ? 80 : (FILE_WRITE_RETRY_DELAY_MS * (attempt + 1)));
             fileObj.encoding = "UTF-8";
             if (!fileObj.open("w")) {
                 lastError = "open failed: " + fileObj.error;
@@ -1141,7 +1221,7 @@ function writeTextFile(fileObj, text) {
             lastError = String(e);
             if (opened) { try { fileObj.close(); } catch (eClose) {} }
         }
-        if (attempt < FILE_WRITE_RETRY_COUNT - 1) sleepMs(FILE_WRITE_RETRY_DELAY_MS);
+        if (attempt < FILE_WRITE_RETRY_COUNT - 1) stabilizePhotoshopHost(FILE_WRITE_RETRY_DELAY_MS * (attempt + 1));
     }
     return { ok: false, error: lastError || "write failed" };
 }
@@ -1151,6 +1231,7 @@ function appendTextFile(fileObj, text) {
     for (var attempt = 0; attempt < FILE_WRITE_RETRY_COUNT; attempt++) {
         var opened = false;
         try {
+            stabilizePhotoshopHost(attempt === 0 ? 80 : (FILE_WRITE_RETRY_DELAY_MS * (attempt + 1)));
             fileObj.encoding = "UTF-8";
             if (!fileObj.open("a")) {
                 lastError = "open failed: " + fileObj.error;
@@ -1171,7 +1252,7 @@ function appendTextFile(fileObj, text) {
             lastError = String(e);
             if (opened) { try { fileObj.close(); } catch (eClose) {} }
         }
-        if (attempt < FILE_WRITE_RETRY_COUNT - 1) sleepMs(FILE_WRITE_RETRY_DELAY_MS);
+        if (attempt < FILE_WRITE_RETRY_COUNT - 1) stabilizePhotoshopHost(FILE_WRITE_RETRY_DELAY_MS * (attempt + 1));
     }
     return { ok: false, error: lastError || "append failed" };
 }
@@ -1347,6 +1428,7 @@ btns.alignment = "right";
 btns.add("button", undefined, "Cancel");
 btns.add("button", undefined, "Run", { name: "ok" });
 
+try {
 if (dlg.show() !== 1) {
     alert("Operation cancelled");
 } else {
@@ -1415,7 +1497,7 @@ if (dlg.show() !== 1) {
 
             if (items.length === 0) {
                 addDiagnostic(diagnosticsState, "error", "no_items_found", { format: orderFormat });
-                diagnosticsFiles = writeDiagnosticsFiles(exportFolder, diagnosticsState, "_Diagnostics");
+                diagnosticsFiles = safeWriteDiagnosticsFiles(exportFolder, diagnosticsState, "_Diagnostics");
                 if (!diagnosticsFiles.text.ok) diagnosticsWriteError = diagnosticsFiles.text.error;
                 else if (diagnosticsFiles.text.warning) diagnosticsWriteWarning = diagnosticsFiles.text.warning;
                 alert("No valid items found in the pasted email.");
@@ -1498,9 +1580,11 @@ if (dlg.show() !== 1) {
 
                 try {
                     if (shouldProcess) {
+                        addDiagnostic(diagnosticsState, "info", "host_prepare", { displayDialogs: String(app.displayDialogs) });
                         var oldUnits = app.preferences.rulerUnits;
                         try {
                             app.preferences.rulerUnits = Units.PIXELS;
+                            addDiagnostic(diagnosticsState, "info", "ruler_units_set", { from: String(oldUnits), to: "PIXELS" });
 
                             for (var i = 0; i < items.length; i++) {
                                 var item = items[i];
@@ -1583,6 +1667,7 @@ if (dlg.show() !== 1) {
                                     var destFolder = getOutputFolderByPrintType(exportFolder, printTypeMode, item.printType);
                                     var outputFile = new File(destFolder.fsName + "/" + base + ".png");
                                     doc.saveAs(outputFile, new PNGSaveOptions(), true);
+                                    stabilizePhotoshopHost(180);
 
                                     processed++;
                                     addDiagnostic(diagnosticsState, "info", "item_exported", {
@@ -1607,9 +1692,18 @@ if (dlg.show() !== 1) {
                                 try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eClose) {
                                     addDiagnostic(diagnosticsState, "warn", "item_close_failed", { index: i + 1, file: item.file, error: safeErrorMessage(eClose) });
                                 }
+                                stabilizePhotoshopHost(120);
                             }
                         } finally {
-                            app.preferences.rulerUnits = oldUnits;
+                            try {
+                                app.preferences.rulerUnits = oldUnits;
+                                addDiagnostic(diagnosticsState, "info", "ruler_units_restored", { to: String(oldUnits) });
+                            } catch (eUnitsRestore) {
+                                addDiagnostic(diagnosticsState, "warn", "ruler_units_restore_failed", {
+                                    error: safeErrorMessage(eUnitsRestore),
+                                    stack: safeErrorStack(eUnitsRestore)
+                                });
+                            }
                         }
                     }
                 } catch (eRun) {
@@ -1621,14 +1715,24 @@ if (dlg.show() !== 1) {
                 }
 
                 if (!cancelledByUser) {
-                    var finalReportResult = flushReport(true);
+                    stabilizePhotoshopHost(350);
+                    var reportFileObj = new File(exportFolder.fsName + "/_Export_REPORT.html");
+                    var logFileObj = new File(exportFolder.fsName + "/_Export_LOG.txt");
+                    var proofFileObj = new File(exportFolder.fsName + "/_Customer_Proof.html");
+                    var pricingFileObj = new File(exportFolder.fsName + "/_Pricing_Audit.html");
+
+                    var finalReportResult = safeManagedWrite(reportFileObj, function () {
+                        return flushReport(true);
+                    }, diagnosticsState, "report_write_exception");
                     if (!finalReportResult) finalReportResult = { ok: false, error: "Report write was not attempted", warning: "", path: reportPath };
-                    reportDescriptor = createManagedWriteDescriptor(new File(exportFolder.fsName + "/_Export_REPORT.html"), finalReportResult);
+                    reportDescriptor = safeCreateManagedWriteDescriptor(reportFileObj, finalReportResult);
                     reportWriteWarning = reportDescriptor.warning || reportWriteWarning;
                     reportWriteError = reportDescriptor.error || reportWriteError;
 
-                    var finalLogResult = writeFinalLog(new File(exportFolder.fsName + "/_Export_LOG.txt"), logBufferParts, reportMeta, reportRows);
-                    logDescriptor = createManagedWriteDescriptor(new File(exportFolder.fsName + "/_Export_LOG.txt"), finalLogResult);
+                    var finalLogResult = safeManagedWrite(logFileObj, function () {
+                        return writeFinalLog(logFileObj, logBufferParts, reportMeta, reportRows);
+                    }, diagnosticsState, "log_write_exception");
+                    logDescriptor = safeCreateManagedWriteDescriptor(logFileObj, finalLogResult);
                     logPath = logDescriptor.path;
                     logWriteWarning = logDescriptor.warning || logWriteWarning;
                     logWriteError = logDescriptor.error || logWriteError;
@@ -1640,8 +1744,10 @@ if (dlg.show() !== 1) {
                     });
 
                     if (generateProof) {
-                        var proofResult = writeProofHtml(exportFolder, reportMeta, reportRows, proofPath);
-                        proofDescriptor = createManagedWriteDescriptor(new File(exportFolder.fsName + "/_Customer_Proof.html"), proofResult);
+                        var proofResult = safeManagedWrite(proofFileObj, function () {
+                            return writeProofHtml(exportFolder, reportMeta, reportRows, proofPath);
+                        }, diagnosticsState, "proof_write_exception");
+                        proofDescriptor = safeCreateManagedWriteDescriptor(proofFileObj, proofResult);
                         proofPath = proofDescriptor.path;
                         proofWriteWarning = proofDescriptor.warning || proofWriteWarning;
                         proofWriteError = proofDescriptor.error || proofWriteError;
@@ -1654,8 +1760,10 @@ if (dlg.show() !== 1) {
                     }
 
                     if (generatePricing) {
-                        var pricingResult = writePricingAuditHtml(exportFolder, reportMeta, reportRows, pricingPath);
-                        pricingDescriptor = createManagedWriteDescriptor(new File(exportFolder.fsName + "/_Pricing_Audit.html"), pricingResult);
+                        var pricingResult = safeManagedWrite(pricingFileObj, function () {
+                            return writePricingAuditHtml(exportFolder, reportMeta, reportRows, pricingPath);
+                        }, diagnosticsState, "pricing_write_exception");
+                        pricingDescriptor = safeCreateManagedWriteDescriptor(pricingFileObj, pricingResult);
                         pricingPath = pricingDescriptor.path;
                         pricingWriteWarning = pricingDescriptor.warning || pricingWriteWarning;
                         pricingWriteError = pricingDescriptor.error || pricingWriteError;
@@ -1668,7 +1776,7 @@ if (dlg.show() !== 1) {
                     }
                 }
 
-                diagnosticsFiles = writeDiagnosticsFiles(exportFolder, diagnosticsState, "_Diagnostics");
+                diagnosticsFiles = safeWriteDiagnosticsFiles(exportFolder, diagnosticsState, "_Diagnostics");
                 if (!diagnosticsFiles.text.ok) diagnosticsWriteError = diagnosticsFiles.text.error;
                 else if (diagnosticsFiles.text.warning) diagnosticsWriteWarning = diagnosticsFiles.text.warning;
                 if (!diagnosticsFiles.json.ok && !diagnosticsWriteError) diagnosticsWriteError = diagnosticsFiles.json.error;
@@ -1707,4 +1815,7 @@ if (dlg.show() !== 1) {
             }
         }
     }
+}
+} finally {
+    try { app.displayDialogs = oldDisplayDialogs; } catch (eRestoreDialogs) {}
 }

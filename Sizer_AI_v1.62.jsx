@@ -1089,8 +1089,11 @@ function makeMeasuredRow(emailFileName, qty, printType, note, price, currency, m
         orderH: round2(orderH),
         orderSize: formatSize(orderW, orderH),
         outputSize: formatSize(outW, outH),
+        finalSize: formatSize(outW, outH),
         outputW: round2(outW),
         outputH: round2(outH),
+        finalW: round2(outW),
+        finalH: round2(outH),
         thumbPath: thumbPath || "",
         outputFsPath: outputFsPath || "",
         delta: delta,
@@ -1116,8 +1119,11 @@ function makeStatusRow(emailFileName, qty, printType, note, price, currency, mat
         orderH: round2(orderH),
         orderSize: formatSize(orderW, orderH),
         outputSize: "",
+        finalSize: "",
         outputW: "",
         outputH: "",
+        finalW: "",
+        finalH: "",
         thumbPath: "",
         outputFsPath: "",
         delta: "",
@@ -1143,8 +1149,11 @@ function makeQueuedRow(emailFileName, qty, printType, note, price, currency, mat
         orderH: round2(orderH),
         orderSize: formatSize(orderW, orderH),
         outputSize: "",
+        finalSize: "",
         outputW: "",
         outputH: "",
+        finalW: "",
+        finalH: "",
         thumbPath: "",
         outputFsPath: "",
         delta: "",
@@ -1237,19 +1246,22 @@ function buildProofHtml(reportMeta, reportRows){
     var html = [];
     html.push("<!doctype html>");
     html.push("<html><head><meta charset='utf-8'><title>Customer Proof</title><style>");
-    html.push("body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:24px;background:#f6f4ef;color:#1f1f1f;}h1{margin:0 0 8px 0;font-size:26px;}p.meta{margin:0 0 18px 0;color:#555;} .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px;} .card{background:#fff;border:1px solid #ddd;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);break-inside:avoid;overflow:hidden;} .name{font-family:Consolas,Monaco,monospace;font-size:16px;font-weight:bold;margin-bottom:12px;word-break:break-word;} .proof-wrap{display:flex;justify-content:center;margin-top:8px;overflow:hidden;} .proof-frame{position:relative;display:inline-block;padding-left:44px;padding-bottom:36px;max-width:100%;box-sizing:border-box;} .stage{display:inline-flex;align-items:center;justify-content:center;border:1px solid #d4d4d4;cursor:pointer;line-height:0;overflow:hidden;max-width:320px;max-height:320px;box-sizing:border-box;} .stage img{display:block;max-width:320px;max-height:320px;width:auto;height:auto;vertical-align:bottom;} .grid-light{background-color:#f7f7f7;background-image:linear-gradient(45deg,#ececec 25%,transparent 25%),linear-gradient(-45deg,#ececec 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ececec 75%),linear-gradient(-45deg,transparent 75%,#ececec 75%);} .grid-medium{background-color:#ececec;background-image:linear-gradient(45deg,#cfcfcf 25%,transparent 25%),linear-gradient(-45deg,#cfcfcf 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#cfcfcf 75%),linear-gradient(-45deg,transparent 75%,#cfcfcf 75%);} .grid-dark{background-color:#c8c8c8;background-image:linear-gradient(45deg,#8f8f8f 25%,transparent 25%),linear-gradient(-45deg,#8f8f8f 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#8f8f8f 75%),linear-gradient(-45deg,transparent 75%,#8f8f8f 75%);} .grid-light,.grid-medium,.grid-dark{background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0;} .width-guide{position:absolute;left:44px;right:0;bottom:0;text-align:center;font-size:20px;font-weight:bold;line-height:1.1;} .height-guide{position:absolute;left:0;top:0;bottom:36px;width:34px;display:flex;align-items:center;justify-content:center;} .height-guide span{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg);font-size:20px;font-weight:bold;line-height:1.1;} .empty{padding:24px;background:#fff;border:1px dashed #ccc;}");
+    html.push("body{font-family:Arial,Helvetica,sans-serif;margin:0;padding:24px;background:#f6f4ef;color:#1f1f1f;}h1{margin:0 0 8px 0;font-size:26px;}p.meta{margin:0 0 8px 0;color:#555;}p.help{margin:0 0 18px 0;color:#555;font-size:12px;} .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:18px;} .card{background:#fff;border:1px solid #ddd;padding:16px;box-shadow:0 1px 3px rgba(0,0,0,.06);break-inside:avoid;overflow:hidden;} .name{font-family:Consolas,Monaco,monospace;font-size:16px;font-weight:bold;margin-bottom:12px;word-break:break-word;} .proof-wrap{display:flex;justify-content:center;margin-top:8px;overflow:hidden;} .proof-frame{position:relative;display:inline-block;padding-left:44px;padding-bottom:36px;max-width:100%;box-sizing:border-box;} .stage{display:inline-flex;align-items:center;justify-content:center;border:1px solid #d4d4d4;cursor:pointer;line-height:0;overflow:hidden;max-width:320px;max-height:320px;box-sizing:border-box;} .stage img{display:block;max-width:320px;max-height:320px;width:auto;height:auto;vertical-align:bottom;} .grid-light{background-color:#f7f7f7;background-image:linear-gradient(45deg,#ececec 25%,transparent 25%),linear-gradient(-45deg,#ececec 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#ececec 75%),linear-gradient(-45deg,transparent 75%,#ececec 75%);} .grid-medium{background-color:#ececec;background-image:linear-gradient(45deg,#cfcfcf 25%,transparent 25%),linear-gradient(-45deg,#cfcfcf 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#cfcfcf 75%),linear-gradient(-45deg,transparent 75%,#cfcfcf 75%);} .grid-dark{background-color:#c8c8c8;background-image:linear-gradient(45deg,#8f8f8f 25%,transparent 25%),linear-gradient(-45deg,#8f8f8f 25%,transparent 25%),linear-gradient(45deg,transparent 75%,#8f8f8f 75%),linear-gradient(-45deg,transparent 75%,#8f8f8f 75%);} .grid-light,.grid-medium,.grid-dark{background-size:24px 24px;background-position:0 0,0 12px,12px -12px,-12px 0;} .width-guide{position:absolute;left:44px;right:0;bottom:0;text-align:center;font-size:20px;font-weight:bold;line-height:1.1;} .height-guide{position:absolute;left:0;top:0;bottom:36px;width:34px;display:flex;align-items:center;justify-content:center;} .height-guide span{display:inline-block;writing-mode:vertical-rl;transform:rotate(180deg);font-size:20px;font-weight:bold;line-height:1.1;} .empty{padding:24px;background:#fff;border:1px dashed #ccc;}");
     html.push("</style><script>");
     html.push("function cycleGrid(el){var cls=['grid-light','grid-medium','grid-dark'];var idx=parseInt(el.getAttribute('data-grid-index')||'0',10);el.className=el.className.replace(/grid-light|grid-medium|grid-dark/g,'').replace(/\\s+/g,' ').replace(/^\\s+|\\s+$/g,'');idx=(idx+1)%cls.length;el.className+=(el.className?' ':'')+cls[idx];el.setAttribute('data-grid-index',String(idx));}");
     html.push("</script></head><body>");
     html.push("<h1>Customer Proof</h1>");
     html.push("<p class='meta'>App: " + escHtml(reportMeta.appName) + " | Date: " + escHtml(reportMeta.date) + "</p>");
+    html.push("<p class='help'>Dimensions shown on each proof are the final measured export size, not the order size from the email.</p>");
     html.push("<div class='grid'>");
     var count = 0;
     for (var i = 0; i < reportRows.length; i++){
         var row = reportRows[i];
-        if (!row.thumbPath || row.status === "BAD_WIDTH_HEIGHT" || row.status === "MISSING_FILE" || row.status === "OPEN_FAIL" || row.status === "ACTION_FAIL" || row.status === "PROCESS_ERROR" || row.status === "UNLOCK_FAIL" || row.status === "RESIZE_FAIL" || row.status === "RGB_FAIL" || row.status === "QUEUED") continue;
+        var proofW = row.finalW !== undefined ? row.finalW : row.outputW;
+        var proofH = row.finalH !== undefined ? row.finalH : row.outputH;
+        if (!row.thumbPath || proofW === "" || proofH === "" || isNaN(proofW) || isNaN(proofH) || row.status === "BAD_WIDTH_HEIGHT" || row.status === "MISSING_FILE" || row.status === "OPEN_FAIL" || row.status === "ACTION_FAIL" || row.status === "PROCESS_ERROR" || row.status === "UNLOCK_FAIL" || row.status === "RESIZE_FAIL" || row.status === "RGB_FAIL" || row.status === "QUEUED") continue;
         var proofUrl = toUrlPath(row.thumbPath);
-        html.push("<section class='card'><div class='name'>" + escHtml(row.file) + "</div><div class='proof-wrap'><div class='proof-frame'><div class='height-guide'><span>" + escHtml(row.outputH) + " in</span></div><div class='stage grid-medium' data-grid-index='1' onclick='cycleGrid(this)'><img src='" + escHtml(proofUrl) + "' alt='proof'></div><div class='width-guide'>" + escHtml(row.outputW) + " in</div></div></div></section>");
+        html.push("<section class='card'><div class='name'>" + escHtml(row.file) + "</div><div class='proof-wrap'><div class='proof-frame'><div class='height-guide'><span>" + escHtml(proofH) + " in</span></div><div class='stage grid-medium' data-grid-index='1' onclick='cycleGrid(this)'><img src='" + escHtml(proofUrl) + "' alt='proof'></div><div class='width-guide'>" + escHtml(proofW) + " in</div></div></div></section>");
         count++;
     }
     if (!count) html.push("<div class='empty'>No exported images available for proof.</div>");
@@ -1283,9 +1295,11 @@ function buildPricingAuditHtml(reportMeta, reportRows){
     html.push("<table><thead><tr><th>#</th><th>Print</th><th>File</th><th>W Old</th><th>H Old</th><th>Qty Old</th><th>Detected</th><th>W New</th><th>H New</th><th>Qty New</th><th>Current Price</th><th>Adjusted Price</th><th>Diff</th></tr></thead><tbody id='audit-body'>");
     for (var i = 0; i < reportRows.length; i++){
         var row = reportRows[i];
-        var defaultW = row.outputW !== "" && !isNaN(row.outputW) ? row.outputW : (!isNaN(row.orderW) ? row.orderW : "");
-        var defaultH = row.outputH !== "" && !isNaN(row.outputH) ? row.outputH : (!isNaN(row.orderH) ? row.orderH : "");
-        var detected = (row.outputW !== "" && row.outputH !== "") ? formatSize(row.outputW, row.outputH) : "--";
+        var measuredW = row.finalW !== undefined ? row.finalW : row.outputW;
+        var measuredH = row.finalH !== undefined ? row.finalH : row.outputH;
+        var defaultW = measuredW !== "" && !isNaN(measuredW) ? measuredW : (!isNaN(row.orderW) ? row.orderW : "");
+        var defaultH = measuredH !== "" && !isNaN(measuredH) ? measuredH : (!isNaN(row.orderH) ? row.orderH : "");
+        var detected = (measuredW !== "" && measuredH !== "" && !isNaN(measuredW) && !isNaN(measuredH)) ? formatSize(measuredW, measuredH) : "--";
         html.push("<tr data-sort-index='" + escHtml(i) + "' data-order-w='" + escHtml(row.orderW) + "' data-order-h='" + escHtml(row.orderH) + "' data-order-qty='" + escHtml(row.qty) + "' data-price='" + escHtml(isNaN(row.price) ? "" : roundMoney(row.price)) + "' data-currency='" + escHtml(row.currency || reportMeta.currency || "$") + "'>");
         html.push("<td>" + escHtml(i + 1) + "</td><td>" + escHtml(row.printType) + "</td><td class='mono'>" + escHtml(row.file) + "<div class='small'>" + escHtml(row.note || "") + "</div></td><td>" + escHtml(row.orderW) + "</td><td>" + escHtml(row.orderH) + "</td><td class='qty-old'>" + escHtml(row.qty) + "</td><td>" + escHtml(detected) + "</td><td><input class='num-input adj-w' type='number' step='0.01' value='" + escHtml(defaultW) + "'></td><td><input class='num-input adj-h' type='number' step='0.01' value='" + escHtml(defaultH) + "'></td><td><input class='num-input adj-q' type='number' step='1' value='" + escHtml(row.qty) + "'></td><td class='right'>" + escHtml(formatMoney(row.price, row.currency || reportMeta.currency)) + "</td><td class='adjusted-price right'>--</td><td class='price-diff right money-zero'>--</td>");
         html.push("</tr>");
