@@ -1,35 +1,54 @@
-#target illustrator
+#target photoshop
+// Sizer Photoshop
+// Version: 1.63
+app.bringToFront();
+var oldDisplayDialogs = app.displayDialogs;
+app.displayDialogs = DialogModes.NO;
 
-var oldUserInteractionLevel = app.userInteractionLevel;
-app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
-
-var ARTBOARD_PADDING_PT = 1;
-var TARGET_PPI = 300;
+var TARGET_DPI = 300;
+var RESAMPLE = ResampleMethod.BICUBIC;
 var REPORT_FLUSH_INTERVAL = 5;
 var CHECKPOINT_REPORT_WRITES_ENABLED = false;
-var FILE_WRITE_RETRY_COUNT = 3;
-var FILE_WRITE_RETRY_DELAY_MS = 80;
+var FILE_WRITE_RETRY_COUNT = 8;
+var FILE_WRITE_RETRY_DELAY_MS = 250;
 
-function trimStr(s){ return String(s).replace(/^\s+|\s+$/g,""); }
-function round2(n){ return Math.round(n * 100) / 100; }
-function roundMoney(n){ return Math.round((n + 0.0000001) * 100) / 100; }
-function pad2(n){ return (n < 10 ? "0" : "") + n; }
-function sleepMs(ms){ try { $.sleep(ms); } catch (e) {} }
-function formatDiagnosticValue(value){
+function trimStr(s) { return String(s).replace(/^\s+|\s+$/g, ""); }
+function round2(n) { return Math.round(n * 100) / 100; }
+function roundMoney(n) { return Math.round((n + 0.0000001) * 100) / 100; }
+function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+function sleepMs(ms) {
+    try { $.sleep(ms); } catch (e) {}
+}
+
+function stabilizePhotoshopHost(waitMs) {
+    try { app.refresh(); } catch (eRefresh) {}
+    sleepMs(waitMs || 120);
+}
+
+function formatDiagnosticValue(value) {
     if (value === null || value === undefined) return "";
     if (typeof value === "number") return isNaN(value) ? "NaN" : String(value);
     if (typeof value === "boolean") return value ? "true" : "false";
     return String(value).replace(/\r?\n/g, " \\n ");
 }
-function safeErrorMessage(err){
+
+function safeErrorMessage(err) {
     if (err === null || err === undefined) return "";
-    try { if (err.message) return String(err.message); } catch (eMessage) {}
-    try { return String(err); } catch (eString) {}
+    try {
+        if (err.message) return String(err.message);
+    } catch (eMessage) {}
+    try {
+        return String(err);
+    } catch (eString) {}
     return "Unknown error";
 }
-function safeErrorStack(err){
+
+function safeErrorStack(err) {
     if (!err) return "";
-    try { if (err.stack) return String(err.stack); } catch (eStack) {}
+    try {
+        if (err.stack) return String(err.stack);
+    } catch (eStack) {}
     try {
         var parts = [];
         if (err.fileName) parts.push(String(err.fileName));
@@ -38,20 +57,22 @@ function safeErrorStack(err){
     } catch (eFile) {}
     return "";
 }
-function initDiagnosticsState(){
+
+function initDiagnosticsState() {
     return {
         startedAt: (new Date()).toString(),
         lines: [],
         events: []
     };
 }
-function addDiagnostic(state, level, eventName, details){
+
+function addDiagnostic(state, level, eventName, details) {
     if (!state) return;
     var timeStamp = (new Date()).toString();
     var parts = [];
     var eventDetails = {};
-    if (details){
-        for (var key in details){
+    if (details) {
+        for (var key in details) {
             if (!details.hasOwnProperty(key)) continue;
             eventDetails[key] = details[key];
             parts.push(key + "=" + formatDiagnosticValue(details[key]));
@@ -65,53 +86,54 @@ function addDiagnostic(state, level, eventName, details){
         details: eventDetails
     });
 }
-function jsonEscapeString(s){
+
+function jsonEscapeString(s) {
     s = String(s);
     return s.replace(/\\/g, "\\\\").replace(/"/g, "\\\"").replace(/\r/g, "\\r").replace(/\n/g, "\\n").replace(/\t/g, "\\t");
 }
-function jsonStringifyLoose(value){
+
+function jsonStringifyLoose(value) {
     if (value === null) return "null";
     if (value === undefined) return "null";
     var t = typeof value;
     if (t === "string") return "\"" + jsonEscapeString(value) + "\"";
     if (t === "number") return isNaN(value) || !isFinite(value) ? "\"" + String(value) + "\"" : String(value);
     if (t === "boolean") return value ? "true" : "false";
-    if (value instanceof Array){
+    if (value instanceof Array) {
         var arr = [];
         for (var i = 0; i < value.length; i++) arr.push(jsonStringifyLoose(value[i]));
         return "[" + arr.join(",") + "]";
     }
     var props = [];
-    for (var key in value){
+    for (var key in value) {
         if (!value.hasOwnProperty(key)) continue;
         props.push("\"" + jsonEscapeString(key) + "\":" + jsonStringifyLoose(value[key]));
     }
     return "{" + props.join(",") + "}";
 }
-function buildDiagnosticsText(state){
+
+function buildDiagnosticsText(state) {
     var lines = [];
     lines.push("Sizer Diagnostics");
     lines.push("Started: " + formatDiagnosticValue(state ? state.startedAt : ""));
     lines.push("");
-    if (state && state.lines && state.lines.length){
+    if (state && state.lines && state.lines.length) {
         for (var i = 0; i < state.lines.length; i++) lines.push(state.lines[i]);
     } else {
         lines.push("[INFO] No diagnostics events captured.");
     }
     return lines.join("\r\n") + "\r\n";
 }
-function buildDiagnosticsJson(state){
+
+function buildDiagnosticsJson(state) {
     return jsonStringifyLoose({
-        app: "Illustrator",
+        app: "Photoshop",
         startedAt: state ? state.startedAt : "",
         events: state ? state.events : []
     });
 }
-function stabilizeIllustratorHost(waitMs){
-    try { app.redraw(); } catch (eRedraw) {}
-    sleepMs(waitMs || 40);
-}
-function createManagedWriteDescriptor(defaultFileObj, result){
+
+function createManagedWriteDescriptor(defaultFileObj, result) {
     var actualPath = result && result.path ? result.path : defaultFileObj.fsName;
     var fallbackUsed = actualPath !== defaultFileObj.fsName;
     return {
@@ -123,24 +145,98 @@ function createManagedWriteDescriptor(defaultFileObj, result){
         fallbackUsed: fallbackUsed
     };
 }
-function describeManagedWrite(descriptor){
+
+function describeManagedWrite(descriptor) {
     if (!descriptor || !descriptor.path) return "";
     if (descriptor.fallbackUsed) return descriptor.name + " (fallback: " + descriptor.path + ")";
     return descriptor.name;
 }
 
-function makeTimestampTag(){
+function safeCreateManagedWriteDescriptor(defaultFileObj, result) {
+    try {
+        return createManagedWriteDescriptor(defaultFileObj, result);
+    } catch (e) {
+        return {
+            ok: !!(result && result.ok),
+            path: result && result.path ? result.path : defaultFileObj.fsName,
+            name: defaultFileObj.name,
+            warning: result && result.warning ? result.warning : "",
+            error: result && result.error ? result.error : safeErrorMessage(e),
+            fallbackUsed: false
+        };
+    }
+}
+
+function safeManagedWrite(defaultFileObj, writerFn, diagnosticsState, eventName) {
+    try {
+        return writerFn();
+    } catch (e) {
+        if (diagnosticsState) {
+            addDiagnostic(diagnosticsState, "error", eventName || "managed_write_failed", {
+                path: defaultFileObj ? defaultFileObj.fsName : "",
+                error: safeErrorMessage(e),
+                stack: safeErrorStack(e)
+            });
+        }
+        return {
+            ok: false,
+            error: safeErrorMessage(e),
+            warning: "",
+            path: defaultFileObj ? defaultFileObj.fsName : ""
+        };
+    }
+}
+
+function safeWriteDiagnosticsFiles(exportFolder, diagnosticsState, baseName) {
+    var textFile = new File(exportFolder.fsName + "/" + baseName + ".txt");
+    var jsonFile = new File(exportFolder.fsName + "/" + baseName + ".json");
+    try {
+        return writeDiagnosticsFiles(exportFolder, diagnosticsState, baseName);
+    } catch (e) {
+        return {
+            text: safeCreateManagedWriteDescriptor(textFile, {
+                ok: false,
+                error: safeErrorMessage(e),
+                warning: "",
+                path: textFile.fsName
+            }),
+            json: safeCreateManagedWriteDescriptor(jsonFile, {
+                ok: false,
+                error: safeErrorMessage(e),
+                warning: "",
+                path: jsonFile.fsName
+            })
+        };
+    }
+}
+
+function makeTimestampTag() {
     var d = new Date();
     return d.getFullYear() + pad2(d.getMonth() + 1) + pad2(d.getDate()) + "_" + pad2(d.getHours()) + pad2(d.getMinutes()) + pad2(d.getSeconds());
 }
 
-function stripExt(name){
+function stripExt(name) {
     var s = String(name);
     var i = s.lastIndexOf(".");
     return (i > 0) ? s.substring(0, i) : s;
 }
 
-function makeBaseWithQtyOption(qty, base, option){
+function safeOpen(fileObj) {
+    try { return app.open(fileObj); }
+    catch (e) { return null; }
+}
+
+function ensureRgbDocument(doc) {
+    if (!doc) return false;
+    try {
+        if (doc.mode !== DocumentMode.RGB) doc.changeMode(ChangeMode.RGB);
+        return doc.mode === DocumentMode.RGB;
+    } catch (e) {
+        return false;
+    }
+}
+
+function makeBaseWithQtyOption(qty, base, option) {
     qty = parseInt(qty, 10);
     if (isNaN(qty) || qty < 1) qty = 1;
     if (option === "filenameQty") return base + "___" + qty;
@@ -148,11 +244,11 @@ function makeBaseWithQtyOption(qty, base, option){
     return base;
 }
 
-function makeOutputNameKey(folderObj, fileName){
+function makeOutputNameKey(folderObj, fileName) {
     return String(folderObj.fsName).toLowerCase() + "/" + String(fileName).toLowerCase();
 }
 
-function reserveUniqueOutputFile(destFolder, base, extensionLower, outputNameState){
+function reserveUniqueOutputFile(destFolder, base, extensionLower, outputNameState) {
     if (!outputNameState.used) outputNameState.used = {};
     if (!outputNameState.counts) outputNameState.counts = {};
 
@@ -167,7 +263,7 @@ function reserveUniqueOutputFile(destFolder, base, extensionLower, outputNameSta
     var finalName = originalName;
     var finalKey = originalKey;
 
-    if (outputNameState.used[originalKey]){
+    if (outputNameState.used[originalKey]) {
         var n = duplicateIndex < 2 ? 2 : duplicateIndex;
         do {
             finalBase = originalBase + "___DUP" + (n < 10 ? "0" : "") + n;
@@ -188,29 +284,29 @@ function reserveUniqueOutputFile(destFolder, base, extensionLower, outputNameSta
     };
 }
 
-function decodeNumericEntitiesLoose(s){
+function decodeNumericEntitiesLoose(s) {
     s = String(s);
-    s = s.replace(/&#(\d+);?/g, function(_, num){
+    s = s.replace(/&#(\d+);?/g, function (_, num) {
         var code = parseInt(num, 10);
         if (isNaN(code)) return _;
-        try { return String.fromCharCode(code); } catch(e){ return _; }
+        try { return String.fromCharCode(code); } catch (e) { return _; }
     });
-    s = s.replace(/&#x([0-9a-fA-F]+);?/g, function(_, hex){
+    s = s.replace(/&#x([0-9a-fA-F]+);?/g, function (_, hex) {
         var code = parseInt(hex, 16);
         if (isNaN(code)) return _;
-        try { return String.fromCharCode(code); } catch(e){ return _; }
+        try { return String.fromCharCode(code); } catch (e) { return _; }
     });
     return s;
 }
 
-function decodePercentEscapesLoose(s){
+function decodePercentEscapesLoose(s) {
     s = String(s);
-    return s.replace(/(?:%[0-9A-Fa-f]{2})+/g, function(chunk){
+    return s.replace(/(?:%[0-9A-Fa-f]{2})+/g, function (chunk) {
         try { return decodeURIComponent(chunk); } catch (e) { return chunk; }
     });
 }
 
-function normalizeForMatch(s){
+function normalizeForMatch(s) {
     s = trimStr(s);
     s = decodeNumericEntitiesLoose(s);
     s = decodePercentEscapesLoose(s);
@@ -220,7 +316,7 @@ function normalizeForMatch(s){
     return s;
 }
 
-function canonicalKey(s){
+function canonicalKey(s) {
     s = normalizeForMatch(s).toLowerCase();
     s = s.replace(/[\s_\-]+/g, "-");
     s = s.replace(/\u00D7/g, "x");
@@ -228,20 +324,20 @@ function canonicalKey(s){
     return s;
 }
 
-function ultraLooseKey(s){
+function ultraLooseKey(s) {
     s = canonicalKey(s);
     s = s.replace(/[\-_ ]+/g, "");
     return s;
 }
 
-function commonPrefixLen(a, b){
+function commonPrefixLen(a, b) {
     var m = Math.min(a.length, b.length);
     var i = 0;
     while (i < m && a.charAt(i) === b.charAt(i)) i++;
     return i;
 }
 
-function similarityScore(a, b){
+function similarityScore(a, b) {
     a = String(a);
     b = String(b);
     if (!a || !b) return 0;
@@ -249,27 +345,27 @@ function similarityScore(a, b){
     return (commonPrefixLen(a, b) * 3) + ((a.indexOf(b) >= 0 || b.indexOf(a) >= 0) ? 10 : 0) - Math.abs(a.length - b.length);
 }
 
-function findFileMatchByEmailName(fileList, emailFileName){
+function findFileMatchByEmailName(fileList, emailFileName) {
     var emailRaw = String(emailFileName);
     var emailNorm = normalizeForMatch(emailRaw);
     var emailCanon = canonicalKey(emailRaw);
     var emailLoose = ultraLooseKey(emailRaw);
     var i, f, c, l;
 
-    for (i = 0; i < fileList.length; i++){
+    for (i = 0; i < fileList.length; i++) {
         f = fileList[i];
         if (f.name === emailRaw) return { file: f, matchType: "exact", suggested: "" };
     }
-    for (i = 0; i < fileList.length; i++){
+    for (i = 0; i < fileList.length; i++) {
         f = fileList[i];
         if (normalizeForMatch(f.name) === emailNorm) return { file: f, matchType: "normalized", suggested: "" };
     }
-    for (i = 0; i < fileList.length; i++){
+    for (i = 0; i < fileList.length; i++) {
         f = fileList[i];
         c = canonicalKey(f.name);
         if (c === emailCanon) return { file: f, matchType: "canonical", suggested: "" };
     }
-    for (i = 0; i < fileList.length; i++){
+    for (i = 0; i < fileList.length; i++) {
         f = fileList[i];
         l = ultraLooseKey(f.name);
         if (l === emailLoose) return { file: f, matchType: "ultraLoose", suggested: "" };
@@ -277,12 +373,12 @@ function findFileMatchByEmailName(fileList, emailFileName){
 
     var bestFile = null;
     var bestScore = -999999;
-    for (i = 0; i < fileList.length; i++){
+    for (i = 0; i < fileList.length; i++) {
         f = fileList[i];
         c = canonicalKey(f.name);
         l = ultraLooseKey(f.name);
         var sc = similarityScore(emailCanon, c) + similarityScore(emailLoose, l);
-        if (sc > bestScore){
+        if (sc > bestScore) {
             bestScore = sc;
             bestFile = f;
         }
@@ -292,7 +388,7 @@ function findFileMatchByEmailName(fileList, emailFileName){
     return { file: null, matchType: "missing", suggested: "" };
 }
 
-function normalizeCurrencyLabel(token){
+function normalizeCurrencyLabel(token) {
     token = trimStr(String(token || ""));
     if (!token) return "$";
     var upper = token.toUpperCase();
@@ -303,26 +399,26 @@ function normalizeCurrencyLabel(token){
     return token;
 }
 
-function parseMoneyNumber(text){
+function parseMoneyNumber(text) {
     var clean = String(text || "").replace(/,/g, "");
     var n = parseFloat(clean);
     return isNaN(n) ? NaN : roundMoney(n);
 }
 
-function parseMoneyToken(text){
+function parseMoneyToken(text) {
     var src = String(text || "");
     var m = /(?:CAD|USD|EUR|GBP|\$|€|£)\s*([\d,]+(?:\.\d+)?)/i.exec(src);
-    if (m){
+    if (m) {
         return { currency: normalizeCurrencyLabel(m[0].replace(/[\d,.\s]+/g, "")), amount: parseMoneyNumber(m[1]) };
     }
     m = /([\d,]+(?:\.\d+)?)\s*(CAD|USD|EUR|GBP|\$|€|£)/i.exec(src);
-    if (m){
+    if (m) {
         return { currency: normalizeCurrencyLabel(m[2]), amount: parseMoneyNumber(m[1]) };
     }
     return { currency: "$", amount: NaN };
 }
 
-function formatMoney(amount, currency){
+function formatMoney(amount, currency) {
     if (isNaN(amount)) return "";
     var cur = normalizeCurrencyLabel(currency);
     var absNum = Math.abs(roundMoney(amount)).toFixed(2);
@@ -331,9 +427,9 @@ function formatMoney(amount, currency){
     return sign + cur + " " + absNum;
 }
 
-function extractQtyAndPrice(blockText){
+function extractQtyAndPrice(blockText) {
     var lines = String(blockText || "").split(/\r?\n/);
-    for (var i = lines.length - 1; i >= 0; i--){
+    for (var i = lines.length - 1; i >= 0; i--) {
         var line = trimStr(lines[i]);
         if (!line) continue;
         var m = /^(\d{1,4})\s+(CAD|USD|EUR|GBP|\$|€|£)\s*([\d,]+(?:\.\d+)?)$/i.exec(line);
@@ -349,11 +445,11 @@ function extractQtyAndPrice(blockText){
     return { qty: qty, price: money.amount, currency: money.currency };
 }
 
-function extractQtyBeforePrice(blockText){
+function extractQtyBeforePrice(blockText) {
     return extractQtyAndPrice(blockText).qty;
 }
 
-function extractMoneyAfterLabel(text, label){
+function extractMoneyAfterLabel(text, label) {
     var safe = String(label).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     var re = new RegExp(safe + "\\s*:?\\s*([^\\r\\n]*)", "i");
     var m = re.exec(String(text || ""));
@@ -361,13 +457,13 @@ function extractMoneyAfterLabel(text, label){
     return parseMoneyToken(m[1]);
 }
 
-function parseEmailFinancials(text, items, orderFormat, diagnosticsState){
+function parseEmailFinancials(text, items, orderFormat, diagnosticsState) {
     var subtotal = extractMoneyAfterLabel(text, "Subtotal");
     var shipping = extractMoneyAfterLabel(text, "Shipping");
     var tax = extractMoneyAfterLabel(text, "HST");
     var total = extractMoneyAfterLabel(text, "Total");
     var taxRateMatch = /HST\s*\(([\d.]+)%\)/i.exec(String(text || ""));
-    if (orderFormat === "us"){
+    if (orderFormat === "us") {
         var available = !isNaN(subtotal.amount) || !isNaN(shipping.amount) || !isNaN(tax.amount) || !isNaN(total.amount);
         if (!available) addDiagnostic(diagnosticsState, "warn", "financials_unavailable", { format: orderFormat, reason: "No reliable totals found in pasted text" });
         return {
@@ -382,8 +478,8 @@ function parseEmailFinancials(text, items, orderFormat, diagnosticsState){
     var subtotalSum = 0;
     var subtotalCount = 0;
     var currency = subtotal.currency || shipping.currency || tax.currency || total.currency || "$";
-    for (var i = 0; i < items.length; i++){
-        if (!isNaN(items[i].price)){
+    for (var i = 0; i < items.length; i++) {
+        if (!isNaN(items[i].price)) {
             subtotalSum += items[i].price;
             subtotalCount++;
         }
@@ -399,7 +495,7 @@ function parseEmailFinancials(text, items, orderFormat, diagnosticsState){
     };
 }
 
-function calculateAdjustedPrice(orderW, orderH, actualW, actualH, currentPrice){
+function calculateAdjustedPrice(orderW, orderH, actualW, actualH, currentPrice) {
     if (isNaN(orderW) || isNaN(orderH) || isNaN(actualW) || isNaN(actualH) || isNaN(currentPrice)) return NaN;
     var oldArea = orderW * orderH;
     var newArea = actualW * actualH;
@@ -407,21 +503,21 @@ function calculateAdjustedPrice(orderW, orderH, actualW, actualH, currentPrice){
     return roundMoney(currentPrice * (newArea / oldArea));
 }
 
-function formatResizeModeLabel(mode){
+function formatResizeModeLabel(mode) {
     if (mode === "respectWidth") return "Respect Width";
     if (mode === "respectHeight") return "Respect Height";
     if (mode === "stretch") return "Stretch";
     return String(mode || "");
 }
 
-function formatFilenameFormatLabel(mode){
+function formatFilenameFormatLabel(mode) {
     if (mode === "filenameQty") return "Filename___Qty";
     if (mode === "qtyFilename") return "Qty___Filename";
     if (mode === "filename") return "Filename";
     return String(mode || "");
 }
 
-function formatPrintTypeModeLabel(mode){
+function formatPrintTypeModeLabel(mode) {
     if (mode === "folder") return "Folder";
     if (mode === "prefix") return "Prefix";
     if (mode === "none") return "None";
@@ -436,23 +532,23 @@ var PRINT_TYPE_RULES = [
     { type: "Dyeblocker", re: /\b(?:DYE[\s-]*BLOCKER\s*DTF|DTF\s*DYE[\s-]*BLOCKER|DYEBLOCKER\s*DTF|DTF\s*DYEBLOCKER)\b/i }
 ];
 
-function detectPrintType(text){
+function detectPrintType(text) {
     var hay = String(text || "");
-    for (var i = 0; i < PRINT_TYPE_RULES.length; i++){
+    for (var i = 0; i < PRINT_TYPE_RULES.length; i++) {
         if (PRINT_TYPE_RULES[i].re.test(hay)) return PRINT_TYPE_RULES[i].type;
     }
     return "";
 }
 
-function lineStartAt(text, index){
+function lineStartAt(text, index) {
     var i = Math.min(Math.max(0, index), String(text).length);
     while (i > 0 && text.charAt(i - 1) !== "\n") i--;
     return i;
 }
 
-function previousNonEmptyLine(text, beforeIndex){
+function previousNonEmptyLine(text, beforeIndex) {
     var end = Math.min(String(text).length, Math.max(0, beforeIndex));
-    while (end > 0){
+    while (end > 0) {
         var start = lineStartAt(text, end);
         var line = trimStr(text.substring(start, end).replace(/\r/g, ""));
         if (line) return { start: start, end: end, text: line };
@@ -461,17 +557,17 @@ function previousNonEmptyLine(text, beforeIndex){
     return { start: 0, end: 0, text: "" };
 }
 
-function findSectionEnd(text, fromIndex){
+function findSectionEnd(text, fromIndex) {
     var m = /(?:^|\r?\n)(?:Subtotal:|Shipping:|Rush order:|GST\s*\(|HST\s*\(|PST\s*\(|QST\s*\(|Total:|Billing address|Shipping address)\b/i.exec(String(text).substring(fromIndex));
     return m ? (fromIndex + m.index) : String(text).length;
 }
 
-function extractItemDimension(blockText, labels){
+function extractItemDimension(blockText, labels) {
     var block = String(blockText || "");
-    for (var i = 0; i < labels.length; i++){
+    for (var i = 0; i < labels.length; i++) {
         var re = new RegExp(labels[i] + "\\s*:\\s*([\\d.]+)", "i");
         var m = re.exec(block);
-        if (m && m[1]){
+        if (m && m[1]) {
             var n = parseFloat(m[1]);
             if (!isNaN(n)) return n;
         }
@@ -479,34 +575,34 @@ function extractItemDimension(blockText, labels){
     return NaN;
 }
 
-function findNextNonEmptyLine(lines, startIndex){
-    for (var i = Math.max(0, startIndex); i < lines.length; i++){
+function findNextNonEmptyLine(lines, startIndex) {
+    for (var i = Math.max(0, startIndex); i < lines.length; i++) {
         if (trimStr(lines[i])) return { index: i, text: trimStr(lines[i]) };
     }
     return { index: -1, text: "" };
 }
 
-function findLineIndexEquals(lines, label, startIndex){
+function findLineIndexEquals(lines, label, startIndex) {
     var needle = trimStr(String(label || "")).toLowerCase();
-    for (var i = Math.max(0, startIndex || 0); i < lines.length; i++){
+    for (var i = Math.max(0, startIndex || 0); i < lines.length; i++) {
         if (trimStr(lines[i]).toLowerCase() === needle) return i;
     }
     return -1;
 }
 
-function parseCustomSizeLine(text){
+function parseCustomSizeLine(text) {
     var m = /([\d.]+)\s*[x×]\s*([\d.]+)/i.exec(String(text || ""));
     if (!m) return { width: NaN, height: NaN };
     return { width: parseFloat(m[1]), height: parseFloat(m[2]) };
 }
 
-function isProbablyUSOrderText(text){
+function isProbablyUSOrderText(text) {
     var src = String(text || "");
     if (/Get Order Details\s*-\s*Wemust US/i.test(src)) return true;
     return /Orders\s*#\d+\s*Details/i.test(src) && /Custom Size/i.test(src) && /File Name/i.test(src) && /(?:^|\r?\n)\s*#\d+\s*(?:\r?\n|$)/i.test(src);
 }
 
-function parseEmailItemsClassic(emailText, diagnosticsState){
+function parseEmailItemsClassic(emailText, diagnosticsState) {
     var text = String(emailText || "");
     var hits = [];
     var re = /Width:/gi;
@@ -515,7 +611,7 @@ function parseEmailItemsClassic(emailText, diagnosticsState){
     if (!hits.length) return [];
 
     var markers = [];
-    for (var i = 0; i < hits.length; i++){
+    for (var i = 0; i < hits.length; i++) {
         var widthIdx = hits[i];
         var widthLineStart = lineStartAt(text, widthIdx);
         var productLine = previousNonEmptyLine(text, widthLineStart - 1);
@@ -526,7 +622,7 @@ function parseEmailItemsClassic(emailText, diagnosticsState){
 
     var sectionEnd = findSectionEnd(text, markers[0].itemStart);
     var scopedMarkers = [];
-    for (var mi = 0; mi < markers.length; mi++){
+    for (var mi = 0; mi < markers.length; mi++) {
         if (markers[mi].itemStart >= sectionEnd) break;
         scopedMarkers.push(markers[mi]);
     }
@@ -535,12 +631,12 @@ function parseEmailItemsClassic(emailText, diagnosticsState){
     var items = [];
     var fRe = /Image file upload:\s*([^\r\n]+)/i;
 
-    for (var j = 0; j < scopedMarkers.length; j++){
+    for (var j = 0; j < scopedMarkers.length; j++) {
         var itemStart = scopedMarkers[j].itemStart;
         var itemEnd = (j + 1 < scopedMarkers.length) ? scopedMarkers[j + 1].itemStart : sectionEnd;
         var block = text.substring(itemStart, itemEnd);
         var fm = fRe.exec(block);
-        if (!fm){
+        if (!fm) {
             addDiagnostic(diagnosticsState, "warn", "classic_item_skipped", { index: j + 1, reason: "Missing uploaded file label" });
             continue;
         }
@@ -549,7 +645,7 @@ function parseEmailItemsClassic(emailText, diagnosticsState){
         var heightIn = extractItemDimension(block, ["Height", "Length"]);
         var fileName = trimStr(fm[1]);
         var qp = extractQtyAndPrice(block);
-        if (isNaN(widthIn) || isNaN(heightIn) || !fileName){
+        if (isNaN(widthIn) || isNaN(heightIn) || !fileName) {
             addDiagnostic(diagnosticsState, "warn", "classic_item_skipped", { index: j + 1, reason: "Incomplete dimensions or filename", file: fileName });
             continue;
         }
@@ -570,79 +666,77 @@ function parseEmailItemsClassic(emailText, diagnosticsState){
     return items;
 }
 
-function parseEmailItemsUS(emailText, diagnosticsState){
+function parseEmailItemsUS(emailText, diagnosticsState) {
     var text = String(emailText || "").replace(/\r/g, "");
     var markerRe = /(?:^|\n)\s*#(\d+)\s*(?=\n|$)/g;
     var markers = [];
-    var m;
-    while ((m = markerRe.exec(text)) !== null){
-        markers.push({ index: m.index + (m[0].charAt(0) === "\n" ? 1 : 0), itemNo: parseInt(m[1], 10) });
+    var markerMatch;
+    while ((markerMatch = markerRe.exec(text)) !== null) {
+        markers.push({ index: markerMatch.index, itemNo: parseInt(markerMatch[1], 10) });
     }
     if (!markers.length) return [];
 
     var items = [];
-    for (var i = 0; i < markers.length; i++){
+    for (var i = 0; i < markers.length; i++) {
         var blockStart = markers[i].index;
+        if (text.charAt(blockStart) === "\n") blockStart++;
         var blockEnd = (i + 1 < markers.length) ? markers[i + 1].index : text.length;
-        var block = trimStr(text.substring(blockStart, blockEnd));
-        if (!block) continue;
+        var block = text.substring(blockStart, blockEnd);
+        var lines = block.split("\n");
+        if (!lines.length) continue;
 
-        var lines = block.split(/\n/);
+        var markerLine = trimStr(lines[0]);
         var productInfo = findNextNonEmptyLine(lines, 1);
-        var productLabel = productInfo.text;
-
-        var fileLabelIndex = findLineIndexEquals(lines, "File Name", 0);
-        var fileInfo = findNextNonEmptyLine(lines, fileLabelIndex >= 0 ? fileLabelIndex + 1 : 0);
-        var fileName = fileInfo.text;
-
-        var note = "";
-        var noteLabelIndex = findLineIndexEquals(lines, "Note for designers", 0);
-        if (noteLabelIndex >= 0){
-            var noteParts = [];
-            for (var ni = noteLabelIndex + 1; ni < lines.length; ni++){
-                var noteLine = trimStr(lines[ni]);
-                if (!noteLine) continue;
-                if (/^(Custom Size|File Name|Do you need them precut\?|Quantity|SL\.No\b)/i.test(noteLine)) break;
-                if (/^#\d+\s*$/i.test(noteLine)) break;
-                if (/^\d+\s*$/.test(noteLine) && ni === lines.length - 1) break;
-                noteParts.push(noteLine);
-            }
-            note = trimStr(noteParts.join(" "));
-        }
-
-        var sizeLabelIndex = findLineIndexEquals(lines, "Custom Size", 0);
-        var sizeInfo = findNextNonEmptyLine(lines, sizeLabelIndex >= 0 ? sizeLabelIndex + 1 : 0);
-        var size = parseCustomSizeLine(sizeInfo.text);
-
-        var qty = NaN;
-        for (var qi = lines.length - 1; qi >= 0; qi--){
-            var qtyLine = trimStr(lines[qi]);
-            if (!qtyLine) continue;
-            if (/^\d+\s*$/.test(qtyLine)){
-                qty = parseInt(qtyLine, 10);
+        var fileLabelIdx = findLineIndexEquals(lines, "File Name", 0);
+        var sizeLabelIdx = findLineIndexEquals(lines, "Custom Size", 0);
+        var noteLabelIdx = findLineIndexEquals(lines, "Note for designers", 0);
+        var fileInfo = fileLabelIdx >= 0 ? findNextNonEmptyLine(lines, fileLabelIdx + 1) : { index: -1, text: "" };
+        var sizeInfo = sizeLabelIdx >= 0 ? findNextNonEmptyLine(lines, sizeLabelIdx + 1) : { index: -1, text: "" };
+        var qty = 1;
+        for (var q = lines.length - 1; q >= 0; q--) {
+            var candidate = trimStr(lines[q]);
+            if (/^\d+$/.test(candidate)) {
+                qty = parseInt(candidate, 10);
                 break;
             }
         }
 
-        if (!productLabel || !fileName || isNaN(size.width) || isNaN(size.height) || isNaN(qty) || qty < 1){
+        var note = "";
+        if (noteLabelIdx >= 0) {
+            var noteStop = lines.length;
+            if (sizeLabelIdx >= 0 && sizeLabelIdx > noteLabelIdx) noteStop = Math.min(noteStop, sizeLabelIdx);
+            var fileStopIdx = fileLabelIdx >= 0 && fileLabelIdx > noteLabelIdx ? fileLabelIdx : noteStop;
+            if (fileStopIdx < noteStop) noteStop = fileStopIdx;
+            for (var nl = noteLabelIdx + 1; nl < noteStop; nl++) {
+                var noteCandidate = trimStr(lines[nl]);
+                if (!noteCandidate) continue;
+                note = noteCandidate;
+                break;
+            }
+        }
+
+        var dims = parseCustomSizeLine(sizeInfo.text);
+        var productLabel = productInfo.text;
+        var fileName = fileInfo.text;
+        var nearbyText = block;
+
+        if (!productLabel || !fileName || isNaN(dims.width) || isNaN(dims.height)) {
             addDiagnostic(diagnosticsState, "warn", "us_item_skipped", {
-                index: i + 1,
-                productLabel: productLabel,
+                marker: markerLine,
+                product: productLabel,
                 file: fileName,
-                qty: qty,
-                width: size.width,
-                height: size.height
+                reason: "Malformed US item block"
             });
             continue;
         }
 
         items.push({
             qty: qty,
-            width: size.width,
-            height: size.height,
+            width: dims.width,
+            height: dims.height,
             file: fileName,
             productLabel: productLabel,
-            printType: detectPrintType(productLabel + "\n" + block),
+            printType: detectPrintType(productLabel + "\n" + nearbyText),
             note: note,
             price: NaN,
             currency: "$",
@@ -652,47 +746,51 @@ function parseEmailItemsUS(emailText, diagnosticsState){
     return items;
 }
 
-function parseEmailItems(emailText, diagnosticsState){
+function parseEmailItems(emailText, diagnosticsState) {
     var text = String(emailText || "");
+    var probablyUS = isProbablyUSOrderText(text);
     var items = [];
     var formatName = "classic";
-    if (isProbablyUSOrderText(text)){
-        formatName = "us";
+
+    if (probablyUS) {
         items = parseEmailItemsUS(text, diagnosticsState);
-        if (!items.length){
-            formatName = "classic";
+        formatName = "us";
+        if (items.length === 0) {
             addDiagnostic(diagnosticsState, "warn", "parser_fallback", { from: "us", to: "classic", reason: "US parser returned no items" });
             items = parseEmailItemsClassic(text, diagnosticsState);
+            formatName = "classic";
         }
     } else {
         items = parseEmailItemsClassic(text, diagnosticsState);
-        if (!items.length){
+        formatName = "classic";
+        if (items.length === 0) {
             var usItems = parseEmailItemsUS(text, diagnosticsState);
-            if (usItems.length){
+            if (usItems.length > 0) {
                 addDiagnostic(diagnosticsState, "info", "parser_fallback", { from: "classic", to: "us", reason: "Classic parser returned no items" });
                 items = usItems;
                 formatName = "us";
             }
         }
     }
+
     addDiagnostic(diagnosticsState, "info", "parser_selected", { format: formatName, items: items.length });
     return { items: items, formatName: formatName };
 }
 
-function extractNoteForBlock(blockText){
+function extractNoteForBlock(blockText) {
     var m = /Message:\s*([\s\S]*?)(?=(?:\r?\n){2,}\s*(?:\d{1,4}\s*(?=(?:CAD|USD|EUR|GBP|\$|€|£))|Subtotal:|Total:)|$)/i.exec(String(blockText));
     if (!m || !m[1]) return "";
     return trimStr(String(m[1]).replace(/\r?\n+/g, " "));
 }
 
-function getFilesInFolder(folderObj){
-    return folderObj.getFiles(function(f){ return f instanceof File; });
+function getFilesInFolder(folderObj) {
+    return folderObj.getFiles(function (f) { return f instanceof File; });
 }
 
-function getRelativePath(fileObj, rootFolder){
+function getRelativePath(fileObj, rootFolder) {
     var full = String(fileObj.fsName);
     var root = String(rootFolder.fsName);
-    if (full.indexOf(root) === 0){
+    if (full.indexOf(root) === 0) {
         var rel = full.substring(root.length);
         if (rel.charAt(0) === "\\" || rel.charAt(0) === "/") rel = rel.substring(1);
         return rel.replace(/\\/g, "/");
@@ -700,284 +798,18 @@ function getRelativePath(fileObj, rootFolder){
     return String(fileObj.name);
 }
 
-function toUrlPath(relPath){
+function toUrlPath(relPath) {
     var clean = String(relPath || "").replace(/\\/g, "/");
     try { return encodeURI(clean); } catch (e) { return clean; }
 }
 
-function layerHasLockedContent(layer){
-    if (!layer) return false;
-    try {
-        if (layer.locked) return true;
-    } catch (eLayer){}
-
-    try {
-        var pageItems = layer.pageItems;
-        for (var i = 0; i < pageItems.length; i++){
-            try {
-                if (pageItems[i].locked) return true;
-            } catch (eItem){}
-        }
-    } catch (ePageItems){}
-
-    try {
-        var sublayers = layer.layers;
-        for (var j = 0; j < sublayers.length; j++){
-            if (layerHasLockedContent(sublayers[j])) return true;
-        }
-    } catch (eSublayers){}
-
-    return false;
-}
-
-function docHasLockedContent(doc){
-    try {
-        for (var i = 0; i < doc.layers.length; i++){
-            if (layerHasLockedContent(doc.layers[i])) return true;
-        }
-    } catch (eLayers){}
-
-    try {
-        for (var j = 0; j < doc.pageItems.length; j++){
-            try {
-                if (doc.pageItems[j].locked) return true;
-            } catch (eDocItem){}
-        }
-    } catch (eDocPageItems){}
-
-    return false;
-}
-
-function unlockLayerRecursive(layer){
-    if (!layer) return;
-    try { layer.locked = false; } catch (eLayer) {}
-
-    try {
-        var sublayers = layer.layers;
-        for (var i = 0; i < sublayers.length; i++){
-            unlockLayerRecursive(sublayers[i]);
-        }
-    } catch (eSublayers) {}
-}
-
-function unlockAllArtwork(doc){
-    if (!doc) return false;
-
-    try { app.executeMenuCommand("unlockAll"); } catch (eMenuUnlockAll) {}
-    try { app.redraw(); } catch (eRedrawUnlockAll1) {}
-
-    try {
-        for (var i = 0; i < doc.layers.length; i++){
-            unlockLayerRecursive(doc.layers[i]);
-        }
-    } catch (eLayers) {}
-
-    try {
-        for (var j = 0; j < doc.pageItems.length; j++){
-            try { doc.pageItems[j].locked = false; } catch (ePageItem) {}
-        }
-    } catch (eDocPageItems) {}
-
-    try { app.executeMenuCommand("unlockAll"); } catch (eMenuUnlockAllAgain) {}
-    try { app.redraw(); } catch (eRedrawUnlockAll2) {}
-
-    return !docHasLockedContent(doc);
-}
-
-function isTopLevelArtworkItem(item){
-    if (!item) return false;
-    try {
-        if (item.locked || item.hidden) return false;
-    } catch (eState) {
-        return false;
-    }
-
-    try {
-        if (item.guides) return false;
-    } catch (eGuides) {}
-
-    try {
-        return item.parent && item.parent.typename === "Layer";
-    } catch (eParent) {}
-
-    return false;
-}
-
-function getTopLevelArtworkItems(doc){
-    var items = [];
-    try {
-        for (var i = 0; i < doc.pageItems.length; i++){
-            var item = doc.pageItems[i];
-            if (!isTopLevelArtworkItem(item)) continue;
-            items.push(item);
-        }
-    } catch (eDocItems) {}
-    return items;
-}
-
-// item bounds union (visibleBounds) -> [L,T,R,B]
-function getArtworkBounds(items){
-    if (!items || items.length === 0) return null;
-
-    var b = null;
-    for (var i = 0; i < items.length; i++){
-        var bb = null;
-        try { bb = items[i].visibleBounds; } catch (eBounds) {}
-        if (!bb || bb.length < 4) continue;
-
-        if (!b){
-            b = [bb[0], bb[1], bb[2], bb[3]];
-            continue;
-        }
-
-        if (bb[0] < b[0]) b[0] = bb[0];
-        if (bb[1] > b[1]) b[1] = bb[1];
-        if (bb[2] > b[2]) b[2] = bb[2];
-        if (bb[3] < b[3]) b[3] = bb[3];
-    }
-    return b;
-}
-
-function boundsSizePt(b){
-    return { w: Math.abs(b[2]-b[0]), h: Math.abs(b[1]-b[3]) };
-}
-
-function boundsCenterPt(b){
-    return { x: (b[0] + b[2]) / 2.0, y: (b[1] + b[3]) / 2.0 };
-}
-
-function scaleArtworkItems(items, sx, sy, artworkBounds){
-    if (!items || items.length === 0) return { ok: false, scaled: 0, failed: 0 };
-
-    var scaleX = sx / 100.0;
-    var scaleY = sy / 100.0;
-    var artworkCenter = artworkBounds ? boundsCenterPt(artworkBounds) : null;
-    var scaled = 0;
-    var failed = 0;
-    for (var i = 0; i < items.length; i++){
-        try{
-            var beforeBounds = items[i].visibleBounds;
-            if (!beforeBounds || beforeBounds.length < 4) throw new Error("bounds unavailable");
-            var beforeCenter = boundsCenterPt(beforeBounds);
-            items[i].resize(
-                sx, sy,
-                true,  // changePositions
-                true,  // changeFillPatterns
-                true,  // changeFillGradients
-                true,  // changeStrokePattern
-                sx,    // changeLineWidths
-                Transformation.CENTER
-            );
-
-            if (artworkCenter){
-                var afterBounds = items[i].visibleBounds;
-                if (!afterBounds || afterBounds.length < 4) throw new Error("post-scale bounds unavailable");
-                var afterCenter = boundsCenterPt(afterBounds);
-                var desiredX = artworkCenter.x + ((beforeCenter.x - artworkCenter.x) * scaleX);
-                var desiredY = artworkCenter.y + ((beforeCenter.y - artworkCenter.y) * scaleY);
-                items[i].translate(desiredX - afterCenter.x, desiredY - afterCenter.y, true, true, true, true);
-            }
-            scaled++;
-        }catch(e){
-            failed++;
-        }
-    }
-    return { ok: scaled > 0 && failed === 0, scaled: scaled, failed: failed };
-}
-
-// Fit active artboard to artwork bounds (artwork-only export)
-function fitArtboardToArtwork(doc, items, paddingPt){
-    var b = getArtworkBounds(items);
-    if (!b) return false;
-
-    var p = paddingPt || 0;
-    var left = b[0] - p;
-    var top = b[1] + p;
-    var right = b[2] + p;
-    var bottom = b[3] - p;
-
-    var idx = doc.artboards.getActiveArtboardIndex();
-    doc.artboards[idx].artboardRect = [left, top, right, bottom];
-    return true;
-}
-
-// CMYK -> RGB (for raster exports)
-function ensureRGB(doc){
-    if (!doc) return false;
-    var beforeKnown = false;
-    var beforeIsRgb = false;
-    try {
-        beforeIsRgb = (doc.documentColorSpace === DocumentColorSpace.RGB);
-        beforeKnown = true;
-    } catch (eReadColor1) {}
-    if (beforeKnown && beforeIsRgb) return true;
-
-    try {
-        // File > Document Color Mode > RGB Color
-        app.executeMenuCommand("doc-color-rgb");
-    } catch (eMenuRgb) {}
-
-    stabilizeIllustratorHost(80);
-
-    var afterKnown = false;
-    var afterIsRgb = false;
-    try {
-        afterIsRgb = (doc.documentColorSpace === DocumentColorSpace.RGB);
-        afterKnown = true;
-    } catch (eReadColor2) {}
-
-    if (afterKnown) return afterIsRgb;
-    return true;
-}
-
-// ---------- ExportForScreens (DPI-aware, closest to "Export As... + Resolution") ----------
-function exportPNG_Resolution(doc, destFolder, prefix, ppi, transparent, artboardIndex1Based){
-    var type = ExportForScreensType.SE_PNG24;
-
-    var opt = new ExportForScreensOptionsPNG24();
-    opt.transparency = !!transparent;
-    opt.interlaced = false;
-    opt.antiAliasing = AntiAliasingMethod.ARTOPTIMIZED;
-
-    // IMPORTANT: sets "Resolution" behavior
-    opt.scaleType = ExportForScreensScaleType.SCALEBYRESOLUTION;
-    opt.scaleTypeValue = ppi;
-
-    var item = new ExportForScreensItemToExport();
-    item.document = false;
-    item.artboards = String(artboardIndex1Based);
-
-    doc.exportForScreens(destFolder, type, opt, item, prefix);
-}
-
-// exportForScreens creates: prefix_Artboard 1.png etc.
-// We rename the newest file starting with prefix and matching extension.
-function renameLatestExport(destFolder, prefix, newName, extensionLower){
-    var files = destFolder.getFiles(function(f){ return f instanceof File; });
-    var best = null;
-
-    for (var i=0;i<files.length;i++){
-        var n = files[i].name.toLowerCase();
-        if (files[i].name.indexOf(prefix) === 0 &&
-            n.lastIndexOf("." + extensionLower) === n.length - (extensionLower.length + 1)){
-            if (!best || files[i].modified > best.modified) best = files[i];
-        }
-    }
-
-    if (best){
-        var target = new File(destFolder.fsName + "/" + newName);
-        try { if (target.exists) target.remove(); } catch(e0){}
-        best.rename(newName);
-    }
-}
-
-function ensureFolder(folderObj){
+function ensureFolder(folderObj) {
     if (folderObj.exists) return true;
-    try { return folderObj.create(); } catch(e){}
+    try { return folderObj.create(); } catch (e) {}
     return folderObj.exists;
 }
 
-function getOutputFolderByPrintType(exportRoot, printTypeMode, printType){
+function getOutputFolderByPrintType(exportRoot, printTypeMode, printType) {
     if (printTypeMode !== "folder") return exportRoot;
     var bucket = printType ? printType : "Other";
     var destFolder = new Folder(exportRoot.fsName + "/" + bucket);
@@ -985,42 +817,52 @@ function getOutputFolderByPrintType(exportRoot, printTypeMode, printType){
     return destFolder;
 }
 
-function escHtml(s){
+function runActionIfNeeded(enableAction, actionSetName, actionName) {
+    if (!enableAction) return { ok: true, msg: "" };
+    try {
+        app.doAction(actionName, actionSetName);
+        return { ok: true, msg: "" };
+    } catch (e) {
+        return { ok: false, msg: String(e) };
+    }
+}
+
+function escHtml(s) {
     s = (s === null || s === undefined) ? "" : String(s);
     return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
 
-function escJsSingleQuoted(s){
+function escJsSingleQuoted(s) {
     s = (s === null || s === undefined) ? "" : String(s);
     return s.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\r/g, "\\r").replace(/\n/g, "\\n");
 }
 
-function formatSigned(n){
+function formatSigned(n) {
     var v = round2(n);
     return (v > 0 ? "+" : "") + v;
 }
 
-function formatSignedPercent(n){
+function formatSignedPercent(n) {
     return formatSigned(n) + "%";
 }
 
-function formatSize(w, h){
+function formatSize(w, h) {
     if (isNaN(w) || isNaN(h)) return "";
     return round2(w) + " x " + round2(h) + " in";
 }
 
-function percentDiff(actual, expected){
+function percentDiff(actual, expected) {
     if (!expected) return 0;
     return ((actual - expected) / expected) * 100;
 }
 
-function getSeverityByPercent(absPct){
+function getSeverityByPercent(absPct) {
     if (absPct > 10) return "not_ok";
     if (absPct >= 5) return "warn";
     return "ok";
 }
 
-function statusSortValue(status){
+function statusSortValue(status) {
     if (status === "MISSING_FILE") return 10;
     if (status === "QUEUED") return 15;
     if (status === "NOT OK") return 30;
@@ -1029,25 +871,25 @@ function statusSortValue(status){
     return 20;
 }
 
-function visualSortValue(direction){
+function visualSortValue(direction) {
     if (direction === "grow") return 10;
     if (direction === "shrink") return 20;
     if (direction === "mixed") return 30;
     return 40;
 }
 
-function buildMeasuredVisualState(resizeMode, widthPct, heightPct){
+function buildMeasuredVisualState(resizeMode, widthPct, heightPct) {
     var severity = "ok";
     var direction = "neutral";
     var eps = 0.0001;
     var hasPos = false;
     var hasNeg = false;
 
-    if (resizeMode === "respectWidth"){
+    if (resizeMode === "respectWidth") {
         severity = getSeverityByPercent(Math.abs(heightPct));
         if (heightPct > eps) direction = "grow";
         else if (heightPct < -eps) direction = "shrink";
-    } else if (resizeMode === "respectHeight"){
+    } else if (resizeMode === "respectHeight") {
         severity = getSeverityByPercent(Math.abs(widthPct));
         if (widthPct > eps) direction = "grow";
         else if (widthPct < -eps) direction = "shrink";
@@ -1061,11 +903,11 @@ function buildMeasuredVisualState(resizeMode, widthPct, heightPct){
     }
 
     var rowClass = "";
-    if (severity === "warn"){
+    if (severity === "warn") {
         if (direction === "grow") rowClass = "row-grow-warn";
         else if (direction === "shrink") rowClass = "row-shrink-warn";
         else if (direction === "mixed") rowClass = "row-mixed-warn";
-    } else if (severity === "not_ok"){
+    } else if (severity === "not_ok") {
         if (direction === "grow") rowClass = "row-grow-not-ok";
         else if (direction === "shrink") rowClass = "row-shrink-not-ok";
         else if (direction === "mixed") rowClass = "row-mixed-not-ok";
@@ -1077,18 +919,18 @@ function buildMeasuredVisualState(resizeMode, widthPct, heightPct){
     return { severity: severity, direction: direction, rowClass: rowClass, comparePct: primaryPct, visualSort: visualSortValue(direction) };
 }
 
-function severityRank(severity){
+function severityRank(severity) {
     if (severity === "error") return 3;
     if (severity === "not_ok") return 2;
     if (severity === "warn") return 1;
     return 0;
 }
 
-function worstSeverity(a, b){
+function worstSeverity(a, b) {
     return severityRank(a) >= severityRank(b) ? a : b;
 }
 
-function makeMatchSummary(orderFile, matchInfo){
+function makeMatchSummary(orderFile, matchInfo) {
     matchInfo = matchInfo || { file: null, matchType: "missing", suggested: "" };
     var label = "Missing";
     if (matchInfo.matchType === "exact") label = "Exact";
@@ -1101,7 +943,7 @@ function makeMatchSummary(orderFile, matchInfo){
     return label;
 }
 
-function makeMeasuredRow(emailFileName, qty, printType, note, price, currency, matchInfo, resizeMode, orderW, orderH, outW, outH, thumbPath, outputFsPath){
+function makeMeasuredRow(emailFileName, qty, printType, note, price, currency, matchInfo, resizeMode, orderW, orderH, outW, outH, thumbPath, outputFsPath) {
     var widthDiff = outW - orderW;
     var heightDiff = outH - orderH;
     var widthPct = percentDiff(outW, orderW);
@@ -1109,9 +951,9 @@ function makeMeasuredRow(emailFileName, qty, printType, note, price, currency, m
     var delta = "";
     var visual = buildMeasuredVisualState(resizeMode, widthPct, heightPct);
 
-    if (resizeMode === "respectWidth"){
+    if (resizeMode === "respectWidth") {
         delta = "H " + formatSigned(heightDiff) + " in (" + formatSignedPercent(heightPct) + ")";
-    } else if (resizeMode === "respectHeight"){
+    } else if (resizeMode === "respectHeight") {
         delta = "W " + formatSigned(widthDiff) + " in (" + formatSignedPercent(widthPct) + ")";
     } else {
         delta = "W " + formatSigned(widthDiff) + " in (" + formatSignedPercent(widthPct) + ") | H " + formatSigned(heightDiff) + " in (" + formatSignedPercent(heightPct) + ")";
@@ -1146,7 +988,7 @@ function makeMeasuredRow(emailFileName, qty, printType, note, price, currency, m
     };
 }
 
-function makeStatusRow(emailFileName, qty, printType, note, price, currency, matchInfo, orderW, orderH, statusCode){
+function makeStatusRow(emailFileName, qty, printType, note, price, currency, matchInfo, orderW, orderH, statusCode) {
     return {
         file: emailFileName,
         qty: qty,
@@ -1176,7 +1018,7 @@ function makeStatusRow(emailFileName, qty, printType, note, price, currency, mat
     };
 }
 
-function makeQueuedRow(emailFileName, qty, printType, note, price, currency, matchInfo, orderW, orderH){
+function makeQueuedRow(emailFileName, qty, printType, note, price, currency, matchInfo, orderW, orderH) {
     return {
         file: emailFileName,
         qty: qty,
@@ -1206,14 +1048,14 @@ function makeQueuedRow(emailFileName, qty, printType, note, price, currency, mat
     };
 }
 
-function buildInitialReportRows(items){
+function buildInitialReportRows(items) {
     var rows = [];
-    for (var i = 0; i < items.length; i++){
+    for (var i = 0; i < items.length; i++) {
         var item = items[i];
         var matchInfo = item.matchInfo || { file: null, matchType: "missing", suggested: "" };
-        if (isNaN(item.width) || isNaN(item.height)){
+        if (isNaN(item.width) || isNaN(item.height)) {
             rows.push(makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "BAD_WIDTH_HEIGHT"));
-        } else if (!matchInfo.file || !matchInfo.file.exists){
+        } else if (!matchInfo.file || !matchInfo.file.exists) {
             rows.push(makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "MISSING_FILE"));
         } else {
             rows.push(makeQueuedRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height));
@@ -1222,9 +1064,9 @@ function buildInitialReportRows(items){
     return rows;
 }
 
-function buildReportStats(reportRows){
+function buildReportStats(reportRows) {
     var stats = { exported: 0, check: 0, notOk: 0, errors: 0, queued: 0 };
-    for (var i = 0; i < reportRows.length; i++){
+    for (var i = 0; i < reportRows.length; i++) {
         var row = reportRows[i];
         if (row.status === "OK") stats.exported++;
         else if (row.status === "CHECK") { stats.exported++; stats.check++; }
@@ -1235,7 +1077,7 @@ function buildReportStats(reportRows){
     return stats;
 }
 
-function buildReportHtml(reportMeta, reportRows){
+function buildReportHtml(reportMeta, reportRows) {
     var stats = buildReportStats(reportRows);
     var html = [];
     html.push("<!doctype html>");
@@ -1266,7 +1108,7 @@ function buildReportHtml(reportMeta, reportRows){
     html.push("<div><strong>Errors:</strong> " + escHtml(stats.errors) + "</div></div>");
     html.push("<div class='legend'><span class='lg-rw'>Bigger 5-10%</span><span class='lg-rn'>Bigger 10%+</span><span class='lg-sw'>Smaller 5-10%</span><span class='lg-sn'>Smaller 10%+</span><span class='lg-mw'>Mixed Stretch</span><span class='lg-er'>Error / Missing</span><span class='lg-pd'>Queued / Not Reached</span></div>");
     html.push("<div class='table-wrap'><table><thead><tr><th data-key='row'><span class='sort-label'>#<span class='sort-ind'></span></span></th><th data-key='thumb'><span class='sort-label'>Thumb<span class='sort-ind'></span></span></th><th data-key='file' onclick=\"sortReport('file')\"><span class='sort-label'>File<span class='sort-ind'></span></span></th><th data-key='qty' onclick=\"sortReport('qty')\"><span class='sort-label'>Qty<span class='sort-ind'></span></span></th><th data-key='print' onclick=\"sortReport('print')\"><span class='sort-label'>Print<span class='sort-ind'></span></span></th><th data-key='price' onclick=\"sortReport('price')\"><span class='sort-label'>Price<span class='sort-ind'></span></span></th><th data-key='note'><span class='sort-label'>Note<span class='sort-ind'></span></span></th><th data-key='match'><span class='sort-label'>Match<span class='sort-ind'></span></span></th><th data-key='order'><span class='sort-label'>Order<span class='sort-ind'></span></span></th><th data-key='output'><span class='sort-label'>Output<span class='sort-ind'></span></span></th><th data-key='delta' onclick=\"sortReport('delta')\"><span class='sort-label'>Delta<span class='sort-ind'></span></span></th><th data-key='status' onclick=\"sortReport('status')\"><span class='sort-label'>Status<span class='sort-ind'></span></span></th><th data-key='review'><span class='sort-label'>Reviewed<span class='sort-ind'></span></span></th></tr></thead><tbody id='report-body'>");
-    for (var i = 0; i < reportRows.length; i++){
+    for (var i = 0; i < reportRows.length; i++) {
         var row = reportRows[i];
         var thumbHtml = "";
         var fileHtml = escHtml(row.file);
@@ -1282,7 +1124,7 @@ function buildReportHtml(reportMeta, reportRows){
     return html.join("\r\n");
 }
 
-function buildProofHtml(reportMeta, reportRows){
+function buildProofHtml(reportMeta, reportRows) {
     var html = [];
     html.push("<!doctype html>");
     html.push("<html><head><meta charset='utf-8'><title>Customer Proof</title><style>");
@@ -1295,11 +1137,11 @@ function buildProofHtml(reportMeta, reportRows){
     html.push("<p class='help'>Dimensions shown on each proof are the final measured export size, not the order size from the email.</p>");
     html.push("<div class='grid'>");
     var count = 0;
-    for (var i = 0; i < reportRows.length; i++){
+    for (var i = 0; i < reportRows.length; i++) {
         var row = reportRows[i];
         var proofW = row.finalW !== undefined ? row.finalW : row.outputW;
         var proofH = row.finalH !== undefined ? row.finalH : row.outputH;
-        if (!row.thumbPath || proofW === "" || proofH === "" || isNaN(proofW) || isNaN(proofH) || row.status === "BAD_WIDTH_HEIGHT" || row.status === "MISSING_FILE" || row.status === "OPEN_FAIL" || row.status === "ACTION_FAIL" || row.status === "PROCESS_ERROR" || row.status === "UNLOCK_FAIL" || row.status === "RESIZE_FAIL" || row.status === "RGB_FAIL" || row.status === "QUEUED") continue;
+        if (!row.thumbPath || proofW === "" || proofH === "" || isNaN(proofW) || isNaN(proofH) || row.status === "BAD_WIDTH_HEIGHT" || row.status === "MISSING_FILE" || row.status === "OPEN_FAIL" || row.status === "ACTION_FAIL" || row.status === "PROCESS_ERROR") continue;
         var proofUrl = toUrlPath(row.thumbPath);
         html.push("<section class='card'><div class='name'>" + escHtml(row.file) + "</div><div class='proof-wrap'><div class='proof-frame'><div class='height-guide'><span>" + escHtml(proofH) + " in</span></div><div class='stage grid-medium' data-grid-index='1' onclick='cycleGrid(this)'><img src='" + escHtml(proofUrl) + "' alt='proof'></div><div class='width-guide'>" + escHtml(proofW) + " in</div></div></div></section>");
         count++;
@@ -1309,7 +1151,7 @@ function buildProofHtml(reportMeta, reportRows){
     return html.join("\r\n");
 }
 
-function buildPricingAuditHtml(reportMeta, reportRows){
+function buildPricingAuditHtml(reportMeta, reportRows) {
     var html = [];
     html.push("<!doctype html>");
     html.push("<html><head><meta charset='utf-8'><title>Pricing Audit</title><style>");
@@ -1333,7 +1175,7 @@ function buildPricingAuditHtml(reportMeta, reportRows){
     html.push("<div class='sum-meta' id='sum-meta'>--</div>");
     html.push("</div>");
     html.push("<table><thead><tr><th>#</th><th>Print</th><th>File</th><th>W Old</th><th>H Old</th><th>Qty Old</th><th>Detected</th><th>W New</th><th>H New</th><th>Qty New</th><th>Current Price</th><th>Adjusted Price</th><th>Diff</th></tr></thead><tbody id='audit-body'>");
-    for (var i = 0; i < reportRows.length; i++){
+    for (var i = 0; i < reportRows.length; i++) {
         var row = reportRows[i];
         var measuredW = row.finalW !== undefined ? row.finalW : row.outputW;
         var measuredH = row.finalH !== undefined ? row.finalH : row.outputH;
@@ -1348,7 +1190,7 @@ function buildPricingAuditHtml(reportMeta, reportRows){
     return html.join("\r\n");
 }
 
-function buildLogHeader(reportMeta){
+function buildLogHeader(reportMeta) {
     var lines = [];
     lines.push("DTF Export Log");
     lines.push("App: " + reportMeta.appName);
@@ -1366,7 +1208,7 @@ function buildLogHeader(reportMeta){
     return lines.join("\r\n") + "\r\n";
 }
 
-function formatLogRow(index, row){
+function formatLogRow(index, row) {
     return [
         index,
         row.status || "",
@@ -1381,25 +1223,26 @@ function formatLogRow(index, row){
     ].join(" | ") + "\r\n";
 }
 
-function buildLogSummary(reportMeta, reportRows){
+function buildLogSummary(reportMeta, reportRows) {
     var stats = buildReportStats(reportRows);
     return "\r\nSummary | Exported: " + stats.exported + " | Check: " + stats.check + " | Not OK: " + stats.notOk + " | Queued: " + stats.queued + " | Errors: " + stats.errors + "\r\n";
 }
 
-function buildFinalLogText(logBufferParts, reportMeta, reportRows){
+function buildFinalLogText(logBufferParts, reportMeta, reportRows) {
     var parts = logBufferParts ? logBufferParts.slice(0) : [];
-    for (var i = 0; i < reportRows.length; i++){
+    for (var i = 0; i < reportRows.length; i++) {
         parts.push(formatLogRow(i + 1, reportRows[i]));
     }
     parts.push(buildLogSummary(reportMeta, reportRows));
     return parts.join("");
 }
 
-function writeTextFile(fileObj, text){
+function writeTextFile(fileObj, text) {
     var lastError = "";
     for (var attempt = 0; attempt < FILE_WRITE_RETRY_COUNT; attempt++) {
         var opened = false;
         try {
+            stabilizePhotoshopHost(attempt === 0 ? 80 : (FILE_WRITE_RETRY_DELAY_MS * (attempt + 1)));
             fileObj.encoding = "UTF-8";
             if (!fileObj.open("w")) {
                 lastError = "open failed: " + fileObj.error;
@@ -1420,12 +1263,43 @@ function writeTextFile(fileObj, text){
             lastError = String(e);
             if (opened) { try { fileObj.close(); } catch (eClose) {} }
         }
-        if (attempt < FILE_WRITE_RETRY_COUNT - 1) sleepMs(FILE_WRITE_RETRY_DELAY_MS);
+        if (attempt < FILE_WRITE_RETRY_COUNT - 1) stabilizePhotoshopHost(FILE_WRITE_RETRY_DELAY_MS * (attempt + 1));
     }
     return { ok: false, error: lastError || "write failed" };
 }
 
-function writeManagedTextFile(fileObj, text){
+function appendTextFile(fileObj, text) {
+    var lastError = "";
+    for (var attempt = 0; attempt < FILE_WRITE_RETRY_COUNT; attempt++) {
+        var opened = false;
+        try {
+            stabilizePhotoshopHost(attempt === 0 ? 80 : (FILE_WRITE_RETRY_DELAY_MS * (attempt + 1)));
+            fileObj.encoding = "UTF-8";
+            if (!fileObj.open("a")) {
+                lastError = "open failed: " + fileObj.error;
+            } else {
+                opened = true;
+                if (!fileObj.write(text)) {
+                    lastError = "write failed: " + fileObj.error;
+                    try { fileObj.close(); } catch (eWriteClose) {}
+                    opened = false;
+                } else if (!fileObj.close()) {
+                    lastError = "close failed: " + fileObj.error;
+                    opened = false;
+                } else {
+                    return { ok: true, error: "" };
+                }
+            }
+        } catch (e) {
+            lastError = String(e);
+            if (opened) { try { fileObj.close(); } catch (eClose) {} }
+        }
+        if (attempt < FILE_WRITE_RETRY_COUNT - 1) stabilizePhotoshopHost(FILE_WRITE_RETRY_DELAY_MS * (attempt + 1));
+    }
+    return { ok: false, error: lastError || "append failed" };
+}
+
+function writeManagedTextFile(fileObj, text) {
     var primary = writeTextFile(fileObj, text);
     if (primary.ok) return { ok: true, error: "", warning: "", path: fileObj.fsName };
 
@@ -1435,7 +1309,7 @@ function writeManagedTextFile(fileObj, text){
     var stamp = makeTimestampTag();
     var sameFolderFile = new File(fileObj.parent.fsName + "/" + baseName + "__" + stamp + ext);
     var sameFolder = writeTextFile(sameFolderFile, text);
-    if (sameFolder.ok){
+    if (sameFolder.ok) {
         return { ok: true, error: "", warning: "Primary path unavailable (" + primary.error + "). Wrote fallback file instead.", path: sameFolderFile.fsName };
     }
 
@@ -1443,7 +1317,7 @@ function writeManagedTextFile(fileObj, text){
     ensureFolder(tempDir);
     var tempFile = new File(tempDir.fsName + "/" + baseName + "__" + stamp + ext);
     var tempResult = writeTextFile(tempFile, text);
-    if (tempResult.ok){
+    if (tempResult.ok) {
         return { ok: true, error: "", warning: "Primary path unavailable (" + primary.error + "). Wrote fallback file to temp instead.", path: tempFile.fsName };
     }
 
@@ -1455,11 +1329,35 @@ function writeManagedTextFile(fileObj, text){
     };
 }
 
-function writeFinalLog(logFileObj, logBufferParts, reportMeta, reportRows){
+function initManagedLog(fileObj, headerText) {
+    var result = writeManagedTextFile(fileObj, headerText);
+    return { path: result.path, warning: result.warning || "", error: result.ok ? "" : result.error };
+}
+
+function appendManagedLog(logState, text) {
+    if (!logState || !logState.path) return;
+    var currentFile = new File(logState.path);
+    var result = appendTextFile(currentFile, text);
+    if (result.ok) return;
+
+    var stamp = makeTimestampTag();
+    var tempDir = new Folder(Folder.temp.fsName + "/Sizer_Logs");
+    ensureFolder(tempDir);
+    var fallbackFile = new File(tempDir.fsName + "/" + stripExt(currentFile.name) + "__" + stamp + ".txt");
+    var fallbackWrite = writeTextFile(fallbackFile, "[Log continued after append failure]\r\n" + text);
+    if (fallbackWrite.ok) {
+        if (!logState.warning) logState.warning = "Primary log path became unavailable. Continued in fallback log.";
+        logState.path = fallbackFile.fsName;
+    } else if (!logState.error) {
+        logState.error = result.error + " | fallback append failed: " + fallbackWrite.error;
+    }
+}
+
+function writeFinalLog(logFileObj, logBufferParts, reportMeta, reportRows) {
     return writeManagedTextFile(logFileObj, buildFinalLogText(logBufferParts, reportMeta, reportRows));
 }
 
-function writeDiagnosticsFiles(exportFolder, diagnosticsState, baseName){
+function writeDiagnosticsFiles(exportFolder, diagnosticsState, baseName) {
     ensureFolder(exportFolder);
     var textFile = new File(exportFolder.fsName + "/" + baseName + ".txt");
     var jsonFile = new File(exportFolder.fsName + "/" + baseName + ".json");
@@ -1471,25 +1369,25 @@ function writeDiagnosticsFiles(exportFolder, diagnosticsState, baseName){
     };
 }
 
-function writeHtmlReport(exportFolder, reportMeta, reportRows, targetPath){
+function writeHtmlReport(exportFolder, reportMeta, reportRows, targetPath) {
     ensureFolder(exportFolder);
     var reportFile = targetPath ? new File(targetPath) : new File(exportFolder.fsName + "/_Export_REPORT.html");
     return writeManagedTextFile(reportFile, buildReportHtml(reportMeta, reportRows));
 }
 
-function writeProofHtml(exportFolder, reportMeta, reportRows, targetPath){
+function writeProofHtml(exportFolder, reportMeta, reportRows, targetPath) {
     ensureFolder(exportFolder);
     var proofFile = targetPath ? new File(targetPath) : new File(exportFolder.fsName + "/_Customer_Proof.html");
     return writeManagedTextFile(proofFile, buildProofHtml(reportMeta, reportRows));
 }
 
-function writePricingAuditHtml(exportFolder, reportMeta, reportRows, targetPath){
+function writePricingAuditHtml(exportFolder, reportMeta, reportRows, targetPath) {
     ensureFolder(exportFolder);
     var auditFile = targetPath ? new File(targetPath) : new File(exportFolder.fsName + "/_Pricing_Audit.html");
     return writeManagedTextFile(auditFile, buildPricingAuditHtml(reportMeta, reportRows));
 }
 
-var dlg = new Window("dialog", "DTF Batch Export (All Inputs)");
+var dlg = new Window("dialog", "DTF Batch Export - Photoshop");
 dlg.orientation = "column";
 dlg.alignChildren = "fill";
 dlg.margins = 16;
@@ -1555,7 +1453,7 @@ folderPanel.margins = 12;
 var folderPath = folderPanel.add("edittext", undefined, "");
 folderPath.characters = 30;
 var browseBtn = folderPanel.add("button", undefined, "Browse...");
-browseBtn.onClick = function(){
+browseBtn.onClick = function () {
     var f = Folder.selectDialog("Select files folder (downloaded assets)");
     if (f) folderPath.text = f.fsName;
 };
@@ -1564,167 +1462,174 @@ var rightCol = mainRow.add("panel", undefined, "Paste Order Email");
 rightCol.orientation = "column";
 rightCol.alignChildren = "fill";
 rightCol.margins = 12;
-var emailInput = rightCol.add("edittext", undefined, "", {multiline:true, scrolling:true});
-emailInput.preferredSize = [650, 420];
+var emailInput = rightCol.add("edittext", undefined, "", { multiline: true, scrolling: true });
+emailInput.preferredSize = [650, 430];
 
 var btns = dlg.add("group");
 btns.alignment = "right";
 btns.add("button", undefined, "Cancel");
-btns.add("button", undefined, "Run", {name:"ok"});
+btns.add("button", undefined, "Run", { name: "ok" });
 
 try {
-    if (dlg.show() !== 1){
-        alert("Operation cancelled");
+if (dlg.show() !== 1) {
+    alert("Operation cancelled");
+} else {
+    var qtyInFilename = rbFilenameQty.value ? "filenameQty" : (rbQtyFilename.value ? "qtyFilename" : "filename");
+    var resizeMode = rbH.value ? "respectHeight" : (rbS.value ? "stretch" : "respectWidth");
+    var printTypeMode = rbPrintFolder.value ? "folder" : (rbPrintPrefix.value ? "prefix" : "none");
+    var runWeMustAction = !!runWeMustChk.value;
+    var generateProof = !!generateProofChk.value;
+    var generatePricing = !!generatePricingChk.value;
+
+    if (!folderPath.text) {
+        alert("Please select a folder.");
     } else {
-        var qtyInFilename = rbFilenameQty.value ? "filenameQty" : (rbQtyFilename.value ? "qtyFilename" : "filename");
-        var resizeMode = rbH.value ? "respectHeight" : (rbS.value ? "stretch" : "respectWidth");
-        var printTypeMode = rbPrintFolder.value ? "folder" : (rbPrintPrefix.value ? "prefix" : "none");
-        var runWeMustAction = !!runWeMustChk.value;
-        var generateProof = !!generateProofChk.value;
-        var generatePricing = !!generatePricingChk.value;
-
-        if (!folderPath.text){
-            alert("Please select a folder.");
+        var inputFolder = new Folder(folderPath.text);
+        if (!inputFolder.exists) {
+            alert("Selected folder does not exist.");
+        } else if (!emailInput.text || emailInput.text.length < 10) {
+            alert("Please paste the order email text.");
         } else {
-            var inputFolder = new Folder(folderPath.text);
-            if (!inputFolder.exists){
-                alert("Selected folder does not exist.");
-            } else if (!emailInput.text || emailInput.text.length < 10){
-                alert("Please paste the order email text.");
+            var exportFolder = new Folder(inputFolder.fsName + "/Export");
+            ensureFolder(exportFolder);
+
+            var reportRows = [];
+            var reportWriteError = "";
+            var reportWriteWarning = "";
+            var reportPath = new File(exportFolder.fsName + "/_Export_REPORT.html").fsName;
+            var logPath = new File(exportFolder.fsName + "/_Export_LOG.txt").fsName;
+            var logWriteWarning = "";
+            var logWriteError = "";
+            var proofWriteError = "";
+            var proofWriteWarning = "";
+            var proofPath = new File(exportFolder.fsName + "/_Customer_Proof.html").fsName;
+            var pricingWriteError = "";
+            var pricingWriteWarning = "";
+            var pricingPath = new File(exportFolder.fsName + "/_Pricing_Audit.html").fsName;
+            var diagnosticsWriteWarning = "";
+            var diagnosticsWriteError = "";
+            var reportDirtyCount = 0;
+            var missing = [];
+            var processed = 0;
+            var diagnosticsState = initDiagnosticsState();
+            var logBufferParts = [];
+            var diagnosticsFiles = null;
+            var logDescriptor = null;
+            var reportDescriptor = null;
+            var proofDescriptor = null;
+            var pricingDescriptor = null;
+            var orderFormat = "classic";
+            var fatalRunError = "";
+            var cancelledByUser = false;
+
+            var emailText = emailInput.text;
+            addDiagnostic(diagnosticsState, "info", "script_start", { app: "Photoshop", folder: inputFolder.fsName });
+            addDiagnostic(diagnosticsState, "info", "user_settings", {
+                resizeMode: resizeMode,
+                filenameFormat: qtyInFilename,
+                printTypeMode: printTypeMode,
+                runWeMustAction: runWeMustAction,
+                generateProof: generateProof,
+                generatePricing: generatePricing
+            });
+
+            var parseResult = parseEmailItems(emailText, diagnosticsState);
+            var items = parseResult.items;
+            orderFormat = parseResult.formatName;
+
+            if (items.length === 0) {
+                addDiagnostic(diagnosticsState, "error", "no_items_found", { format: orderFormat });
+                diagnosticsFiles = safeWriteDiagnosticsFiles(exportFolder, diagnosticsState, "_Diagnostics");
+                if (!diagnosticsFiles.text.ok) diagnosticsWriteError = diagnosticsFiles.text.error;
+                else if (diagnosticsFiles.text.warning) diagnosticsWriteWarning = diagnosticsFiles.text.warning;
+                alert("No valid items found in the pasted email.");
             } else {
-                var exportFolder = new Folder(inputFolder.fsName + "/Export");
-                ensureFolder(exportFolder);
+                addDiagnostic(diagnosticsState, "info", "items_detected", { count: items.length, format: orderFormat });
+                var emailFinancials = parseEmailFinancials(emailText, items, orderFormat, diagnosticsState);
+                var reportMeta = {
+                    appName: "Photoshop",
+                    date: (new Date()).toString(),
+                    resizeMode: formatResizeModeLabel(resizeMode),
+                    dpi: TARGET_DPI,
+                    filenameFormat: formatFilenameFormatLabel(qtyInFilename),
+                    printTypeMode: formatPrintTypeModeLabel(printTypeMode),
+                    actionSummary: runWeMustAction ? "WeMust / WeMust" : "None",
+                    exportFolder: exportFolder.fsName,
+                    itemsFound: items.length,
+                    currency: emailFinancials.currency,
+                    subtotal: emailFinancials.subtotal,
+                    shipping: emailFinancials.shipping,
+                    tax: emailFinancials.tax,
+                    total: emailFinancials.total,
+                    taxRate: emailFinancials.taxRate
+                };
 
-                var reportRows = [];
-                var reportWriteError = "";
-                var reportWriteWarning = "";
-                var reportPath = new File(exportFolder.fsName + "/_Export_REPORT.html").fsName;
-                var logPath = new File(exportFolder.fsName + "/_Export_LOG.txt").fsName;
-                var logWriteWarning = "";
-                var logWriteError = "";
-                var proofWriteError = "";
-                var proofWriteWarning = "";
-                var proofPath = new File(exportFolder.fsName + "/_Customer_Proof.html").fsName;
-                var pricingWriteError = "";
-                var pricingWriteWarning = "";
-                var pricingPath = new File(exportFolder.fsName + "/_Pricing_Audit.html").fsName;
-                var diagnosticsWriteWarning = "";
-                var diagnosticsWriteError = "";
-                var reportDirtyCount = 0;
-                var missing = [];
-                var processed = 0;
-                var diagnosticsState = initDiagnosticsState();
-                var logBufferParts = [];
-                var diagnosticsFiles = null;
-                var logDescriptor = null;
-                var reportDescriptor = null;
-                var proofDescriptor = null;
-                var pricingDescriptor = null;
-                var orderFormat = "classic";
-                var fatalRunError = "";
-                var cancelledByUser = false;
+                function flushReport(force) {
+                    if (!force && !(CHECKPOINT_REPORT_WRITES_ENABLED && reportDirtyCount >= REPORT_FLUSH_INTERVAL)) return null;
+                    var result = writeHtmlReport(exportFolder, reportMeta, reportRows, reportPath);
+                    reportWriteError = result.ok ? "" : result.error;
+                    reportWriteWarning = result.warning || reportWriteWarning;
+                    reportPath = result.path;
+                    reportDirtyCount = 0;
+                    addDiagnostic(diagnosticsState, result.ok ? "info" : "error", "report_write_attempt", {
+                        checkpoint: force ? "final" : "checkpoint",
+                        ok: result.ok,
+                        path: result.path,
+                        warning: result.warning || "",
+                        error: result.error || ""
+                    });
+                    return result;
+                }
 
-                var emailText = emailInput.text;
-                addDiagnostic(diagnosticsState, "info", "script_start", { app: "Illustrator", folder: inputFolder.fsName });
-                addDiagnostic(diagnosticsState, "info", "user_settings", {
-                    resizeMode: resizeMode,
-                    filenameFormat: qtyInFilename,
-                    printTypeMode: printTypeMode,
-                    runWeMustAction: runWeMustAction,
-                    generateProof: generateProof,
-                    generatePricing: generatePricing
-                });
-                var parseResult = parseEmailItems(emailText, diagnosticsState);
-                var items = parseResult.items;
-                orderFormat = parseResult.formatName;
+                function updateReportRow(index, row) {
+                    reportRows[index] = row;
+                    reportDirtyCount++;
+                    addDiagnostic(diagnosticsState, (row.status === "OK" || row.status === "CHECK" || row.status === "NOT OK") ? "info" : "warn", "item_result", {
+                        index: index + 1,
+                        file: row.file,
+                        status: row.status,
+                        match: row.match,
+                        output: row.outputSize
+                    });
+                    flushReport(false);
+                }
 
-                if (items.length === 0){
-                    addDiagnostic(diagnosticsState, "error", "no_items_found", { format: orderFormat });
-                    diagnosticsFiles = writeDiagnosticsFiles(exportFolder, diagnosticsState, "_Diagnostics");
-                    if (!diagnosticsFiles.text.ok) diagnosticsWriteError = diagnosticsFiles.text.error;
-                    else if (diagnosticsFiles.text.warning) diagnosticsWriteWarning = diagnosticsFiles.text.warning;
-                    alert("No valid items found in the pasted email.");
-                } else {
-                    addDiagnostic(diagnosticsState, "info", "items_detected", { count: items.length, format: orderFormat });
-                    var emailFinancials = parseEmailFinancials(emailText, items, orderFormat, diagnosticsState);
-                    var reportMeta = {
-                        appName: "Illustrator",
-                        date: (new Date()).toString(),
-                        resizeMode: formatResizeModeLabel(resizeMode),
-                        dpi: TARGET_PPI,
-                        filenameFormat: formatFilenameFormatLabel(qtyInFilename),
-                        printTypeMode: formatPrintTypeModeLabel(printTypeMode),
-                        actionSummary: runWeMustAction ? "WeMust / WeMust" : "None",
-                        exportFolder: exportFolder.fsName,
-                        itemsFound: items.length,
-                        currency: emailFinancials.currency,
-                        subtotal: emailFinancials.subtotal,
-                        shipping: emailFinancials.shipping,
-                        tax: emailFinancials.tax,
-                        total: emailFinancials.total,
-                        taxRate: emailFinancials.taxRate
-                    };
+                logBufferParts = [buildLogHeader(reportMeta)];
 
-                    function flushReport(force){
-                        if (!force && !(CHECKPOINT_REPORT_WRITES_ENABLED && reportDirtyCount >= REPORT_FLUSH_INTERVAL)) return null;
-                        var result = writeHtmlReport(exportFolder, reportMeta, reportRows, reportPath);
-                        reportWriteError = result.ok ? "" : result.error;
-                        reportWriteWarning = result.warning || reportWriteWarning;
-                        reportPath = result.path;
-                        reportDirtyCount = 0;
-                        addDiagnostic(diagnosticsState, result.ok ? "info" : "error", "report_write_attempt", {
-                            checkpoint: force ? "final" : "checkpoint",
-                            ok: result.ok,
-                            path: result.path,
-                            warning: result.warning || "",
-                            error: result.error || ""
-                        });
-                        return result;
+                var allFiles = getFilesInFolder(inputFolder);
+                var missingCount = 0;
+                for (var m = 0; m < items.length; m++) {
+                    items[m].matchInfo = findFileMatchByEmailName(allFiles, items[m].file);
+                    if (!items[m].matchInfo.file) missingCount++;
+                }
+                reportRows = buildInitialReportRows(items);
+                var outputNameState = { used: {}, counts: {} };
+                addDiagnostic(diagnosticsState, "info", "preflight_complete", { items: items.length, missingCount: missingCount });
+
+                var shouldProcess = true;
+                if (missingCount > 0) {
+                    shouldProcess = confirm(
+                        "Preflight result:\n" +
+                        "Items found in email: " + items.length + "\n" +
+                        "Items missing/unmatched: " + missingCount + "\n\n" +
+                        "Continue anyway?"
+                    );
+                    if (!shouldProcess) {
+                        cancelledByUser = true;
+                        addDiagnostic(diagnosticsState, "warn", "user_cancelled_after_preflight", { missingCount: missingCount });
+                        alert("Operation cancelled");
                     }
+                }
 
-                    function updateReportRow(index, row){
-                        reportRows[index] = row;
-                        reportDirtyCount++;
-                        addDiagnostic(diagnosticsState, (row.status === "OK" || row.status === "CHECK" || row.status === "NOT OK") ? "info" : "warn", "item_result", {
-                            index: index + 1,
-                            file: row.file,
-                            status: row.status,
-                            match: row.match,
-                            output: row.outputSize
-                        });
-                        flushReport(false);
-                    }
+                try {
+                    if (shouldProcess) {
+                        addDiagnostic(diagnosticsState, "info", "host_prepare", { displayDialogs: String(app.displayDialogs) });
+                        var oldUnits = app.preferences.rulerUnits;
+                        try {
+                            app.preferences.rulerUnits = Units.PIXELS;
+                            addDiagnostic(diagnosticsState, "info", "ruler_units_set", { from: String(oldUnits), to: "PIXELS" });
 
-                    logBufferParts = [buildLogHeader(reportMeta)];
-
-                    var allFiles = getFilesInFolder(inputFolder);
-                    var missingCount = 0;
-                    for (var m = 0; m < items.length; m++){
-                        items[m].matchInfo = findFileMatchByEmailName(allFiles, items[m].file);
-                        if (!items[m].matchInfo.file) missingCount++;
-                    }
-                    reportRows = buildInitialReportRows(items);
-                    var outputNameState = { used: {}, counts: {} };
-                    addDiagnostic(diagnosticsState, "info", "preflight_complete", { items: items.length, missingCount: missingCount });
-
-                    var shouldProcess = true;
-                    if (missingCount > 0){
-                        shouldProcess = confirm(
-                            "Preflight result:\n" +
-                            "Items found in email: " + items.length + "\n" +
-                            "Items missing/unmatched: " + missingCount + "\n\n" +
-                            "Continue anyway?"
-                        );
-                        if (!shouldProcess){
-                            cancelledByUser = true;
-                            addDiagnostic(diagnosticsState, "warn", "user_cancelled_after_preflight", { missingCount: missingCount });
-                            alert("Operation cancelled");
-                        }
-                    }
-
-                    try {
-                        if (shouldProcess){
-                            for (var i = 0; i < items.length; i++){
+                            for (var i = 0; i < items.length; i++) {
                                 var item = items[i];
                                 var matchInfo = item.matchInfo || { file: null, matchType: "missing", suggested: "" };
                                 addDiagnostic(diagnosticsState, "info", "item_start", {
@@ -1735,14 +1640,14 @@ try {
                                     height: item.height
                                 });
 
-                                if (isNaN(item.width) || isNaN(item.height)){
+                                if (isNaN(item.width) || isNaN(item.height)) {
                                     missing.push(item.file + " (bad width/height)");
                                     addDiagnostic(diagnosticsState, "warn", "item_bad_dimensions", { index: i + 1, file: item.file });
                                     updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "BAD_WIDTH_HEIGHT"));
                                     continue;
                                 }
 
-                                if (!matchInfo.file || !matchInfo.file.exists){
+                                if (!matchInfo.file || !matchInfo.file.exists) {
                                     var missMsg = item.file;
                                     if (matchInfo.suggested) missMsg += " (did you mean: " + matchInfo.suggested + ")";
                                     missing.push(missMsg);
@@ -1751,130 +1656,70 @@ try {
                                     continue;
                                 }
 
-                                var doc = null;
-                                try {
-                                    doc = app.open(matchInfo.file);
-                                    stabilizeIllustratorHost(80);
-                                } catch(eOpen){
+                                var doc = safeOpen(matchInfo.file);
+                                if (!doc) {
                                     missing.push(item.file + " (failed to open)");
-                                    addDiagnostic(diagnosticsState, "error", "item_open_failed", { index: i + 1, file: item.file, path: matchInfo.file.fsName, error: safeErrorMessage(eOpen) });
+                                    addDiagnostic(diagnosticsState, "error", "item_open_failed", { index: i + 1, file: item.file, path: matchInfo.file.fsName });
                                     updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "OPEN_FAIL"));
                                     continue;
                                 }
 
                                 try {
-                                    if (!ensureRGB(doc)) addDiagnostic(diagnosticsState, "warn", "item_rgb_unverified", { index: i + 1, file: item.file, stage: "open" });
-
-                                    if (!unlockAllArtwork(doc)){
-                                        missing.push(item.file + " (unlock failed)");
-                                        addDiagnostic(diagnosticsState, "error", "item_unlock_failed", { index: i + 1, file: item.file, stage: "open" });
-                                        updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "UNLOCK_FAIL"));
-                                        try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseUnlock) {
-                                            addDiagnostic(diagnosticsState, "warn", "item_close_failed", { index: i + 1, file: item.file, error: safeErrorMessage(eCloseUnlock) });
-                                        }
+                                    if (!ensureRgbDocument(doc)) {
+                                        missing.push(item.file + " (rgb conversion failed)");
+                                        addDiagnostic(diagnosticsState, "error", "item_rgb_failed", { index: i + 1, file: item.file });
+                                        updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "RGB_FAIL"));
+                                        try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseRgbOpen) {}
                                         continue;
                                     }
 
-                                    if (runWeMustAction){
-                                        try {
-                                            app.doScript("WeMust", "WeMust");
-                                        } catch (eAction){
+                                    try { doc.trim(TrimType.TRANSPARENT, true, true, true, true); } catch (eTrim) {
+                                        addDiagnostic(diagnosticsState, "warn", "item_trim_skipped", { index: i + 1, file: item.file, error: safeErrorMessage(eTrim) });
+                                    }
+
+                                    var targetWidthPx = Math.round(item.width * TARGET_DPI);
+                                    var targetHeightPx = Math.round(item.height * TARGET_DPI);
+                                    if (resizeMode === "stretch") doc.resizeImage(UnitValue(targetWidthPx, "px"), UnitValue(targetHeightPx, "px"), TARGET_DPI, RESAMPLE);
+                                    else if (resizeMode === "respectWidth") doc.resizeImage(UnitValue(targetWidthPx, "px"), undefined, TARGET_DPI, RESAMPLE);
+                                    else doc.resizeImage(undefined, UnitValue(targetHeightPx, "px"), TARGET_DPI, RESAMPLE);
+
+                                    if (runWeMustAction) {
+                                        var actionResult = runActionIfNeeded(true, "WeMust", "WeMust");
+                                        if (!actionResult.ok) {
                                             missing.push(item.file + " (action WeMust failed)");
-                                            addDiagnostic(diagnosticsState, "error", "item_action_failed", { index: i + 1, file: item.file, error: safeErrorMessage(eAction), stack: safeErrorStack(eAction) });
+                                            addDiagnostic(diagnosticsState, "error", "item_action_failed", { index: i + 1, file: item.file, error: actionResult.msg });
                                             updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "ACTION_FAIL"));
-                                            try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseAction) {
-                                                addDiagnostic(diagnosticsState, "warn", "item_close_failed", { index: i + 1, file: item.file, error: safeErrorMessage(eCloseAction) });
-                                            }
-                                            continue;
-                                        }
-
-                                        if (!unlockAllArtwork(doc)){
-                                            missing.push(item.file + " (unlock failed after action)");
-                                            addDiagnostic(diagnosticsState, "error", "item_unlock_failed", { index: i + 1, file: item.file, stage: "post_action" });
-                                            updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "UNLOCK_FAIL"));
-                                            try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseUnlockAfterAction) {
-                                                addDiagnostic(diagnosticsState, "warn", "item_close_failed", { index: i + 1, file: item.file, error: safeErrorMessage(eCloseUnlockAfterAction) });
-                                            }
+                                            try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseAction) {}
                                             continue;
                                         }
                                     }
 
-                                    if (!ensureRGB(doc)) addDiagnostic(diagnosticsState, "warn", "item_rgb_unverified", { index: i + 1, file: item.file, stage: "post_action" });
-
-                                    var artworkItems = getTopLevelArtworkItems(doc);
-                                    var b0 = getArtworkBounds(artworkItems);
-                                    if (!b0){
-                                        missing.push(item.file + " (no selectable artwork)");
-                                        addDiagnostic(diagnosticsState, "error", "item_no_artwork", { index: i + 1, file: item.file });
-                                        updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "NO_ARTWORK"));
-                                        try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseNoArt) {
-                                            addDiagnostic(diagnosticsState, "warn", "item_close_failed", { index: i + 1, file: item.file, error: safeErrorMessage(eCloseNoArt) });
-                                        }
+                                    if (!ensureRgbDocument(doc)) {
+                                        missing.push(item.file + " (rgb conversion failed)");
+                                        addDiagnostic(diagnosticsState, "error", "item_rgb_failed", { index: i + 1, file: item.file, stage: "post_action" });
+                                        updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "RGB_FAIL"));
+                                        try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseRgbFinal) {}
                                         continue;
                                     }
 
-                                    var cur = boundsSizePt(b0);
-                                    if (cur.w <= 0 || cur.h <= 0){
-                                        missing.push(item.file + " (bad bounds)");
-                                        addDiagnostic(diagnosticsState, "error", "item_bad_bounds", { index: i + 1, file: item.file, width: cur.w, height: cur.h });
-                                        updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "BAD_BOUNDS"));
-                                        try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseBounds) {
-                                            addDiagnostic(diagnosticsState, "warn", "item_close_failed", { index: i + 1, file: item.file, error: safeErrorMessage(eCloseBounds) });
-                                        }
-                                        continue;
-                                    }
-
-                                    var sx = ((item.width * 72) / cur.w) * 100.0;
-                                    var sy = ((item.height * 72) / cur.h) * 100.0;
-                                    var scaleResult = null;
-                                    if (resizeMode === "respectWidth") scaleResult = scaleArtworkItems(artworkItems, sx, sx, b0);
-                                    else if (resizeMode === "respectHeight") scaleResult = scaleArtworkItems(artworkItems, sy, sy, b0);
-                                    else scaleResult = scaleArtworkItems(artworkItems, sx, sy, b0);
-
-                                    if (!scaleResult || !scaleResult.ok){
-                                        missing.push(item.file + " (resize failed: " + (scaleResult ? scaleResult.failed : 0) + " items)");
-                                        addDiagnostic(diagnosticsState, "error", "item_resize_failed", { index: i + 1, file: item.file, scaled: scaleResult ? scaleResult.scaled : 0, failed: scaleResult ? scaleResult.failed : 0 });
-                                        updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "RESIZE_FAIL"));
-                                        try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseResize) {
-                                            addDiagnostic(diagnosticsState, "warn", "item_close_failed", { index: i + 1, file: item.file, error: safeErrorMessage(eCloseResize) });
-                                        }
-                                        continue;
-                                    }
-
-                                    artworkItems = getTopLevelArtworkItems(doc);
-                                    if (!fitArtboardToArtwork(doc, artworkItems, ARTBOARD_PADDING_PT)){
-                                        missing.push(item.file + " (cannot fit artboard)");
-                                        addDiagnostic(diagnosticsState, "error", "item_fit_artboard_failed", { index: i + 1, file: item.file });
-                                        updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "FIT_ARTBOARD_FAIL"));
-                                        try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eCloseFit) {
-                                            addDiagnostic(diagnosticsState, "warn", "item_close_failed", { index: i + 1, file: item.file, error: safeErrorMessage(eCloseFit) });
-                                        }
-                                        continue;
-                                    }
-
-                                    var bOut = getArtworkBounds(artworkItems);
-                                    var outPt = bOut ? boundsSizePt(bOut) : {w:0,h:0};
-                                    var outW = outPt.w / 72.0;
-                                    var outH = outPt.h / 72.0;
-
+                                    var outW = doc.width.as("px") / TARGET_DPI;
+                                    var outH = doc.height.as("px") / TARGET_DPI;
                                     var base = makeBaseWithQtyOption(item.qty, stripExt(item.file), qtyInFilename);
                                     if (printTypeMode === "prefix" && item.printType) base = item.printType + "___" + base;
 
                                     var destFolder = getOutputFolderByPrintType(exportFolder, printTypeMode, item.printType);
                                     var outputReservation = reserveUniqueOutputFile(destFolder, base, "png", outputNameState);
                                     base = outputReservation.base;
-                                    var prefixPNG = base + "__PNG__";
-                                    var ab1 = doc.artboards.getActiveArtboardIndex() + 1;
                                     var outputFile = outputReservation.file;
-                                    if (outputReservation.duplicate){
+                                    if (outputReservation.duplicate) {
                                         addDiagnostic(diagnosticsState, "warn", "item_output_name_duplicate", {
                                             index: i + 1,
                                             original: outputReservation.originalName,
                                             output: outputReservation.name
                                         });
                                     }
-                                    exportPNG_Resolution(doc, destFolder, prefixPNG, TARGET_PPI, true, ab1);
-                                    renameLatestExport(destFolder, prefixPNG, outputReservation.name, "png");
+                                    doc.saveAs(outputFile, new PNGSaveOptions(), true);
+                                    stabilizePhotoshopHost(180);
 
                                     processed++;
                                     addDiagnostic(diagnosticsState, "info", "item_exported", {
@@ -1885,7 +1730,7 @@ try {
                                         outH: round2(outH)
                                     });
                                     updateReportRow(i, makeMeasuredRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, resizeMode, item.width, item.height, outW, outH, getRelativePath(outputFile, exportFolder), outputFile.fsName));
-                                } catch(eProc){
+                                } catch (eProc) {
                                     missing.push(item.file + " (process/export error)");
                                     addDiagnostic(diagnosticsState, "error", "item_process_failed", {
                                         index: i + 1,
@@ -1896,105 +1741,133 @@ try {
                                     updateReportRow(i, makeStatusRow(item.file, item.qty, item.printType, item.note, item.price, item.currency, matchInfo, item.width, item.height, "PROCESS_ERROR"));
                                 }
 
-                                try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch(eClose){
+                                try { doc.close(SaveOptions.DONOTSAVECHANGES); } catch (eClose) {
                                     addDiagnostic(diagnosticsState, "warn", "item_close_failed", { index: i + 1, file: item.file, error: safeErrorMessage(eClose) });
                                 }
-                                stabilizeIllustratorHost(40);
+                                stabilizePhotoshopHost(120);
+                            }
+                        } finally {
+                            try {
+                                app.preferences.rulerUnits = oldUnits;
+                                addDiagnostic(diagnosticsState, "info", "ruler_units_restored", { to: String(oldUnits) });
+                            } catch (eUnitsRestore) {
+                                addDiagnostic(diagnosticsState, "warn", "ruler_units_restore_failed", {
+                                    error: safeErrorMessage(eUnitsRestore),
+                                    stack: safeErrorStack(eUnitsRestore)
+                                });
                             }
                         }
-                    } catch (eRun){
-                        fatalRunError = safeErrorMessage(eRun);
-                        addDiagnostic(diagnosticsState, "error", "fatal_run_error", { error: fatalRunError, stack: safeErrorStack(eRun) });
                     }
+                } catch (eRun) {
+                    fatalRunError = safeErrorMessage(eRun);
+                    addDiagnostic(diagnosticsState, "error", "fatal_run_error", {
+                        error: fatalRunError,
+                        stack: safeErrorStack(eRun)
+                    });
+                }
 
-                    if (!cancelledByUser){
-                        var finalReportResult = flushReport(true);
-                        if (!finalReportResult) finalReportResult = { ok: false, error: "Report write was not attempted", warning: "", path: reportPath };
-                        reportDescriptor = createManagedWriteDescriptor(new File(exportFolder.fsName + "/_Export_REPORT.html"), finalReportResult);
-                        reportWriteWarning = reportDescriptor.warning || reportWriteWarning;
-                        reportWriteError = reportDescriptor.error || reportWriteError;
+                if (!cancelledByUser) {
+                    stabilizePhotoshopHost(350);
+                    var reportFileObj = new File(exportFolder.fsName + "/_Export_REPORT.html");
+                    var logFileObj = new File(exportFolder.fsName + "/_Export_LOG.txt");
+                    var proofFileObj = new File(exportFolder.fsName + "/_Customer_Proof.html");
+                    var pricingFileObj = new File(exportFolder.fsName + "/_Pricing_Audit.html");
 
-                        var finalLogResult = writeFinalLog(new File(exportFolder.fsName + "/_Export_LOG.txt"), logBufferParts, reportMeta, reportRows);
-                        logDescriptor = createManagedWriteDescriptor(new File(exportFolder.fsName + "/_Export_LOG.txt"), finalLogResult);
-                        logPath = logDescriptor.path;
-                        logWriteWarning = logDescriptor.warning || logWriteWarning;
-                        logWriteError = logDescriptor.error || logWriteError;
-                        addDiagnostic(diagnosticsState, finalLogResult.ok ? "info" : "error", "log_write_attempt", {
-                            ok: finalLogResult.ok,
-                            path: finalLogResult.path,
-                            warning: finalLogResult.warning || "",
-                            error: finalLogResult.error || ""
+                    var finalReportResult = safeManagedWrite(reportFileObj, function () {
+                        return flushReport(true);
+                    }, diagnosticsState, "report_write_exception");
+                    if (!finalReportResult) finalReportResult = { ok: false, error: "Report write was not attempted", warning: "", path: reportPath };
+                    reportDescriptor = safeCreateManagedWriteDescriptor(reportFileObj, finalReportResult);
+                    reportWriteWarning = reportDescriptor.warning || reportWriteWarning;
+                    reportWriteError = reportDescriptor.error || reportWriteError;
+
+                    var finalLogResult = safeManagedWrite(logFileObj, function () {
+                        return writeFinalLog(logFileObj, logBufferParts, reportMeta, reportRows);
+                    }, diagnosticsState, "log_write_exception");
+                    logDescriptor = safeCreateManagedWriteDescriptor(logFileObj, finalLogResult);
+                    logPath = logDescriptor.path;
+                    logWriteWarning = logDescriptor.warning || logWriteWarning;
+                    logWriteError = logDescriptor.error || logWriteError;
+                    addDiagnostic(diagnosticsState, finalLogResult.ok ? "info" : "error", "log_write_attempt", {
+                        ok: finalLogResult.ok,
+                        path: finalLogResult.path,
+                        warning: finalLogResult.warning || "",
+                        error: finalLogResult.error || ""
+                    });
+
+                    if (generateProof) {
+                        var proofResult = safeManagedWrite(proofFileObj, function () {
+                            return writeProofHtml(exportFolder, reportMeta, reportRows, proofPath);
+                        }, diagnosticsState, "proof_write_exception");
+                        proofDescriptor = safeCreateManagedWriteDescriptor(proofFileObj, proofResult);
+                        proofPath = proofDescriptor.path;
+                        proofWriteWarning = proofDescriptor.warning || proofWriteWarning;
+                        proofWriteError = proofDescriptor.error || proofWriteError;
+                        addDiagnostic(diagnosticsState, proofResult.ok ? "info" : "error", "proof_write_attempt", {
+                            ok: proofResult.ok,
+                            path: proofResult.path,
+                            warning: proofResult.warning || "",
+                            error: proofResult.error || ""
                         });
-
-                        if (generateProof){
-                            var proofResult = writeProofHtml(exportFolder, reportMeta, reportRows, proofPath);
-                            proofDescriptor = createManagedWriteDescriptor(new File(exportFolder.fsName + "/_Customer_Proof.html"), proofResult);
-                            proofPath = proofDescriptor.path;
-                            proofWriteWarning = proofDescriptor.warning || proofWriteWarning;
-                            proofWriteError = proofDescriptor.error || proofWriteError;
-                            addDiagnostic(diagnosticsState, proofResult.ok ? "info" : "error", "proof_write_attempt", {
-                                ok: proofResult.ok,
-                                path: proofResult.path,
-                                warning: proofResult.warning || "",
-                                error: proofResult.error || ""
-                            });
-                        }
-
-                        if (generatePricing){
-                            var pricingResult = writePricingAuditHtml(exportFolder, reportMeta, reportRows, pricingPath);
-                            pricingDescriptor = createManagedWriteDescriptor(new File(exportFolder.fsName + "/_Pricing_Audit.html"), pricingResult);
-                            pricingPath = pricingDescriptor.path;
-                            pricingWriteWarning = pricingDescriptor.warning || pricingWriteWarning;
-                            pricingWriteError = pricingDescriptor.error || pricingWriteError;
-                            addDiagnostic(diagnosticsState, pricingResult.ok ? "info" : "error", "pricing_write_attempt", {
-                                ok: pricingResult.ok,
-                                path: pricingResult.path,
-                                warning: pricingResult.warning || "",
-                                error: pricingResult.error || ""
-                            });
-                        }
                     }
 
-                    diagnosticsFiles = writeDiagnosticsFiles(exportFolder, diagnosticsState, "_Diagnostics");
-                    if (!diagnosticsFiles.text.ok) diagnosticsWriteError = diagnosticsFiles.text.error;
-                    else if (diagnosticsFiles.text.warning) diagnosticsWriteWarning = diagnosticsFiles.text.warning;
-                    if (!diagnosticsFiles.json.ok && !diagnosticsWriteError) diagnosticsWriteError = diagnosticsFiles.json.error;
-                    else if (diagnosticsFiles.json.warning && !diagnosticsWriteWarning) diagnosticsWriteWarning = diagnosticsFiles.json.warning;
-
-                    if (!cancelledByUser){
-                        var finalStats = buildReportStats(reportRows);
-                        var failedItems = finalStats.errors + finalStats.queued;
-                        var msg = "Done!\n"
-                                + "Mode: " + formatResizeModeLabel(resizeMode) + "\n"
-                                + "DPI: " + TARGET_PPI + "\n"
-                                + "Order format: " + orderFormat + "\n"
-                                + "Items found: " + items.length + "\n"
-                                + "Files processed: " + processed + "\n"
-                                + "Failed items: " + failedItems + "\n"
-                                + "Report: " + describeManagedWrite(reportDescriptor) + "\n"
-                                + "Log: " + describeManagedWrite(logDescriptor) + "\n"
-                                + "Diagnostics: " + (diagnosticsFiles ? describeManagedWrite(diagnosticsFiles.text) : "_Diagnostics.txt");
-                        if (diagnosticsFiles) msg += "\nDiagnostics JSON: " + describeManagedWrite(diagnosticsFiles.json);
-                        if (generateProof) msg += "\nProof: " + describeManagedWrite(proofDescriptor);
-                        if (generatePricing) msg += "\nPricing audit: " + describeManagedWrite(pricingDescriptor);
-                        if (fatalRunError) msg += "\n\nFatal run issue:\n- " + fatalRunError;
-                        if (missing.length > 0) msg += "\n\nMissing/Problem (" + missing.length + "):\n- " + missing.join("\n- ");
-                        if (logWriteWarning) msg += "\n\nLog write note:\n- " + logWriteWarning;
-                        if (logWriteError) msg += "\n\nLog write issue:\n- " + logWriteError;
-                        if (reportWriteWarning) msg += "\n\nReport write note:\n- " + reportWriteWarning;
-                        if (reportWriteError) msg += "\n\nReport write issue:\n- " + reportWriteError;
-                        if (proofWriteWarning) msg += "\n\nProof write note:\n- " + proofWriteWarning;
-                        if (proofWriteError) msg += "\n\nProof write issue:\n- " + proofWriteError;
-                        if (pricingWriteWarning) msg += "\n\nPricing write note:\n- " + pricingWriteWarning;
-                        if (pricingWriteError) msg += "\n\nPricing write issue:\n- " + pricingWriteError;
-                        if (diagnosticsWriteWarning) msg += "\n\nDiagnostics write note:\n- " + diagnosticsWriteWarning;
-                        if (diagnosticsWriteError) msg += "\n\nDiagnostics write issue:\n- " + diagnosticsWriteError;
-                        alert(msg);
+                    if (generatePricing) {
+                        var pricingResult = safeManagedWrite(pricingFileObj, function () {
+                            return writePricingAuditHtml(exportFolder, reportMeta, reportRows, pricingPath);
+                        }, diagnosticsState, "pricing_write_exception");
+                        pricingDescriptor = safeCreateManagedWriteDescriptor(pricingFileObj, pricingResult);
+                        pricingPath = pricingDescriptor.path;
+                        pricingWriteWarning = pricingDescriptor.warning || pricingWriteWarning;
+                        pricingWriteError = pricingDescriptor.error || pricingWriteError;
+                        addDiagnostic(diagnosticsState, pricingResult.ok ? "info" : "error", "pricing_write_attempt", {
+                            ok: pricingResult.ok,
+                            path: pricingResult.path,
+                            warning: pricingResult.warning || "",
+                            error: pricingResult.error || ""
+                        });
                     }
+                }
+
+                diagnosticsFiles = safeWriteDiagnosticsFiles(exportFolder, diagnosticsState, "_Diagnostics");
+                if (!diagnosticsFiles.text.ok) diagnosticsWriteError = diagnosticsFiles.text.error;
+                else if (diagnosticsFiles.text.warning) diagnosticsWriteWarning = diagnosticsFiles.text.warning;
+                if (!diagnosticsFiles.json.ok && !diagnosticsWriteError) diagnosticsWriteError = diagnosticsFiles.json.error;
+                else if (diagnosticsFiles.json.warning && !diagnosticsWriteWarning) diagnosticsWriteWarning = diagnosticsFiles.json.warning;
+
+                if (!cancelledByUser) {
+                    var finalStats = buildReportStats(reportRows);
+                    var failedItems = finalStats.errors + finalStats.queued;
+                    var msg = "Done!\n"
+                        + "Mode: " + formatResizeModeLabel(resizeMode) + "\n"
+                        + "DPI: " + TARGET_DPI + "\n"
+                        + "Order format: " + orderFormat + "\n"
+                        + "Items found: " + items.length + "\n"
+                        + "Files processed: " + processed + "\n"
+                        + "Failed items: " + failedItems + "\n"
+                        + "Report: " + describeManagedWrite(reportDescriptor) + "\n"
+                        + "Log: " + describeManagedWrite(logDescriptor) + "\n"
+                        + "Diagnostics: " + (diagnosticsFiles ? describeManagedWrite(diagnosticsFiles.text) : "_Diagnostics.txt");
+                    if (diagnosticsFiles) msg += "\nDiagnostics JSON: " + describeManagedWrite(diagnosticsFiles.json);
+                    if (generateProof) msg += "\nProof: " + describeManagedWrite(proofDescriptor);
+                    if (generatePricing) msg += "\nPricing audit: " + describeManagedWrite(pricingDescriptor);
+                    if (fatalRunError) msg += "\n\nFatal run issue:\n- " + fatalRunError;
+                    if (missing.length > 0) msg += "\n\nMissing/Problem (" + missing.length + "):\n- " + missing.join("\n- ");
+                    if (logWriteWarning) msg += "\n\nLog write note:\n- " + logWriteWarning;
+                    if (logWriteError) msg += "\n\nLog write issue:\n- " + logWriteError;
+                    if (reportWriteWarning) msg += "\n\nReport write note:\n- " + reportWriteWarning;
+                    if (reportWriteError) msg += "\n\nReport write issue:\n- " + reportWriteError;
+                    if (proofWriteWarning) msg += "\n\nProof write note:\n- " + proofWriteWarning;
+                    if (proofWriteError) msg += "\n\nProof write issue:\n- " + proofWriteError;
+                    if (pricingWriteWarning) msg += "\n\nPricing write note:\n- " + pricingWriteWarning;
+                    if (pricingWriteError) msg += "\n\nPricing write issue:\n- " + pricingWriteError;
+                    if (diagnosticsWriteWarning) msg += "\n\nDiagnostics write note:\n- " + diagnosticsWriteWarning;
+                    if (diagnosticsWriteError) msg += "\n\nDiagnostics write issue:\n- " + diagnosticsWriteError;
+                    alert(msg);
                 }
             }
         }
     }
+}
 } finally {
-    try { app.userInteractionLevel = oldUserInteractionLevel; } catch (eRestore) {}
+    try { app.displayDialogs = oldDisplayDialogs; } catch (eRestoreDialogs) {}
 }

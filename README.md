@@ -23,8 +23,8 @@ The script then:
 
 There are two host-specific scripts:
 
-- `Sizer_PS_v1.6.jsx` for `Adobe Photoshop`
-- `Sizer_AI_v1.6.jsx` for `Adobe Illustrator`
+- `Sizer_PS.jsx` for `Adobe Photoshop`
+- `Sizer_AI.jsx` for `Adobe Illustrator`
 
 Both scripts follow the same workflow and produce the same family of reports.
 
@@ -282,7 +282,7 @@ If a file still cannot be unlocked or a top-level object fails to resize, `Illus
 
 1. Open `Adobe Photoshop`
 2. Run `File > Scripts > Browse...`
-3. Choose `Sizer_PS_v1.6.jsx`
+3. Choose `Sizer_PS.jsx`
 4. Select the artwork folder
 5. Paste the order email
 6. Choose naming, resize, and print-type options
@@ -293,7 +293,7 @@ If a file still cannot be unlocked or a top-level object fails to resize, `Illus
 
 1. Open `Adobe Illustrator`
 2. Run `File > Scripts > Other Script...`
-3. Choose `Sizer_AI_v1.6.jsx`
+3. Choose `Sizer_AI.jsx`
 4. Select the artwork folder
 5. Paste the order email
 6. Choose naming, resize, and print-type options
@@ -360,8 +360,8 @@ Current limitations include:
 
 ```text
 Sizer_js_for_Photoshop_and_illustrator/
-├─ Sizer_PS_v1.6.jsx
-├─ Sizer_AI_v1.6.jsx
+├─ Sizer_PS.jsx
+├─ Sizer_AI.jsx
 ├─ README.md
 └─ AGENTS.md
 ```
@@ -377,11 +377,6 @@ This repo is for print shops, production operators, and internal workflow builde
 - fewer expensive print mistakes
 
 ## Status
-
-Current tracked script version in this repo:
-
-- `Sizer_PS_v1.6.jsx`
-- `Sizer_AI_v1.6.jsx`
 
 The project is actively shaped around real shop-floor feedback.
 
