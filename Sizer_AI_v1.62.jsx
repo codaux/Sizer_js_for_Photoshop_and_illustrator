@@ -148,6 +148,46 @@ function makeBaseWithQtyOption(qty, base, option){
     return base;
 }
 
+function makeOutputNameKey(folderObj, fileName){
+    return String(folderObj.fsName).toLowerCase() + "/" + String(fileName).toLowerCase();
+}
+
+function reserveUniqueOutputFile(destFolder, base, extensionLower, outputNameState){
+    if (!outputNameState.used) outputNameState.used = {};
+    if (!outputNameState.counts) outputNameState.counts = {};
+
+    var ext = String(extensionLower || "png").replace(/^\./, "").toLowerCase();
+    var originalBase = String(base);
+    var originalName = originalBase + "." + ext;
+    var originalKey = makeOutputNameKey(destFolder, originalName);
+    var duplicateIndex = outputNameState.counts[originalKey] ? outputNameState.counts[originalKey] + 1 : 1;
+    outputNameState.counts[originalKey] = duplicateIndex;
+
+    var finalBase = originalBase;
+    var finalName = originalName;
+    var finalKey = originalKey;
+
+    if (outputNameState.used[originalKey]){
+        var n = duplicateIndex < 2 ? 2 : duplicateIndex;
+        do {
+            finalBase = originalBase + "___DUP" + (n < 10 ? "0" : "") + n;
+            finalName = finalBase + "." + ext;
+            finalKey = makeOutputNameKey(destFolder, finalName);
+            n++;
+        } while (outputNameState.used[finalKey]);
+    }
+
+    outputNameState.used[finalKey] = true;
+    return {
+        file: new File(destFolder.fsName + "/" + finalName),
+        base: finalBase,
+        name: finalName,
+        originalName: originalName,
+        duplicate: finalName !== originalName,
+        duplicateIndex: duplicateIndex
+    };
+}
+
 function decodeNumericEntitiesLoose(s){
     s = String(s);
     s = s.replace(/&#(\d+);?/g, function(_, num){
@@ -1664,6 +1704,7 @@ try {
                         if (!items[m].matchInfo.file) missingCount++;
                     }
                     reportRows = buildInitialReportRows(items);
+                    var outputNameState = { used: {}, counts: {} };
                     addDiagnostic(diagnosticsState, "info", "preflight_complete", { items: items.length, missingCount: missingCount });
 
                     var shouldProcess = true;
@@ -1820,11 +1861,20 @@ try {
                                     if (printTypeMode === "prefix" && item.printType) base = item.printType + "___" + base;
 
                                     var destFolder = getOutputFolderByPrintType(exportFolder, printTypeMode, item.printType);
+                                    var outputReservation = reserveUniqueOutputFile(destFolder, base, "png", outputNameState);
+                                    base = outputReservation.base;
                                     var prefixPNG = base + "__PNG__";
                                     var ab1 = doc.artboards.getActiveArtboardIndex() + 1;
-                                    var outputFile = new File(destFolder.fsName + "/" + base + ".png");
+                                    var outputFile = outputReservation.file;
+                                    if (outputReservation.duplicate){
+                                        addDiagnostic(diagnosticsState, "warn", "item_output_name_duplicate", {
+                                            index: i + 1,
+                                            original: outputReservation.originalName,
+                                            output: outputReservation.name
+                                        });
+                                    }
                                     exportPNG_Resolution(doc, destFolder, prefixPNG, TARGET_PPI, true, ab1);
-                                    renameLatestExport(destFolder, prefixPNG, base + ".png", "png");
+                                    renameLatestExport(destFolder, prefixPNG, outputReservation.name, "png");
 
                                     processed++;
                                     addDiagnostic(diagnosticsState, "info", "item_exported", {
