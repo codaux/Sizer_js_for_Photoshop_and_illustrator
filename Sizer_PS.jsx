@@ -1,6 +1,6 @@
 #target photoshop
 // Sizer Photoshop
-// Version: 1.65
+// Version: 1.66
 app.bringToFront();
 var oldDisplayDialogs = app.displayDialogs;
 app.displayDialogs = DialogModes.NO;
@@ -1079,6 +1079,12 @@ function buildReportStats(reportRows) {
 
 function buildReportHtml(reportMeta, reportRows) {
     var stats = buildReportStats(reportRows);
+    function formatStatusForReport(row) {
+        var status = row && row.status ? row.status : "";
+        var match = row && row.match ? row.match : "";
+        if (!match || match === "Exact") return status;
+        return status + " | Match: " + match;
+    }
     var html = [];
     html.push("<!doctype html>");
     html.push("<html><head><meta charset='utf-8'><title>DTF QC Report</title>");
@@ -1107,7 +1113,7 @@ function buildReportHtml(reportMeta, reportRows) {
     html.push("<div><strong>Queued:</strong> " + escHtml(stats.queued) + "</div>");
     html.push("<div><strong>Errors:</strong> " + escHtml(stats.errors) + "</div></div>");
     html.push("<div class='legend'><span class='lg-rw'>Bigger 5-10%</span><span class='lg-rn'>Bigger 10%+</span><span class='lg-sw'>Smaller 5-10%</span><span class='lg-sn'>Smaller 10%+</span><span class='lg-mw'>Mixed Stretch</span><span class='lg-er'>Error / Missing</span><span class='lg-pd'>Queued / Not Reached</span></div>");
-    html.push("<div class='table-wrap'><table><thead><tr><th data-key='row'><span class='sort-label'>#<span class='sort-ind'></span></span></th><th data-key='thumb'><span class='sort-label'>Thumb<span class='sort-ind'></span></span></th><th data-key='file' onclick=\"sortReport('file')\"><span class='sort-label'>File<span class='sort-ind'></span></span></th><th data-key='qty' onclick=\"sortReport('qty')\"><span class='sort-label'>Qty<span class='sort-ind'></span></span></th><th data-key='print' onclick=\"sortReport('print')\"><span class='sort-label'>Print<span class='sort-ind'></span></span></th><th data-key='price' onclick=\"sortReport('price')\"><span class='sort-label'>Price<span class='sort-ind'></span></span></th><th data-key='note'><span class='sort-label'>Note<span class='sort-ind'></span></span></th><th data-key='match'><span class='sort-label'>Match<span class='sort-ind'></span></span></th><th data-key='order'><span class='sort-label'>Order<span class='sort-ind'></span></span></th><th data-key='output'><span class='sort-label'>Output<span class='sort-ind'></span></span></th><th data-key='delta' onclick=\"sortReport('delta')\"><span class='sort-label'>Delta<span class='sort-ind'></span></span></th><th data-key='status' onclick=\"sortReport('status')\"><span class='sort-label'>Status<span class='sort-ind'></span></span></th><th data-key='review'><span class='sort-label'>Reviewed<span class='sort-ind'></span></span></th></tr></thead><tbody id='report-body'>");
+    html.push("<div class='table-wrap'><table><thead><tr><th data-key='row'><span class='sort-label'>#<span class='sort-ind'></span></span></th><th data-key='thumb'><span class='sort-label'>Thumb<span class='sort-ind'></span></span></th><th data-key='file' onclick=\"sortReport('file')\"><span class='sort-label'>File<span class='sort-ind'></span></span></th><th data-key='qty' onclick=\"sortReport('qty')\"><span class='sort-label'>Qty<span class='sort-ind'></span></span></th><th data-key='print' onclick=\"sortReport('print')\"><span class='sort-label'>Print<span class='sort-ind'></span></span></th><th data-key='price' onclick=\"sortReport('price')\"><span class='sort-label'>Price<span class='sort-ind'></span></span></th><th data-key='note'><span class='sort-label'>Note<span class='sort-ind'></span></span></th><th data-key='order'><span class='sort-label'>Order<span class='sort-ind'></span></span></th><th data-key='output'><span class='sort-label'>Output<span class='sort-ind'></span></span></th><th data-key='delta' onclick=\"sortReport('delta')\"><span class='sort-label'>Delta<span class='sort-ind'></span></span></th><th data-key='status' onclick=\"sortReport('status')\"><span class='sort-label'>Status<span class='sort-ind'></span></span></th><th data-key='review'><span class='sort-label'>Reviewed<span class='sort-ind'></span></span></th></tr></thead><tbody id='report-body'>");
     for (var i = 0; i < reportRows.length; i++) {
         var row = reportRows[i];
         var thumbHtml = "";
@@ -1118,7 +1124,7 @@ function buildReportHtml(reportMeta, reportRows) {
             thumbHtml = "<a class='thumb-link' href='" + escHtml(outputUrl) + "' target='_blank'><span class='thumb-wrap'><span class='thumb-box'><img class='thumb-img' src='" + escHtml(url) + "' alt='thumb' onload='fitThumb(this,80,80)'></span></span></a>";
             fileHtml = "<a href='" + escHtml(outputUrl) + "' target='_blank'>" + escHtml(row.file) + "</a>";
         }
-        html.push("<tr class='" + escHtml(row.rowClass) + "' data-row-index='" + escHtml(i) + "' data-file-sort='" + escHtml((row.file || '').toLowerCase()) + "' data-qty-sort='" + escHtml(row.qty) + "' data-print-sort='" + escHtml(row.printSort || '') + "' data-price-sort='" + escHtml(isNaN(row.price) ? -1 : row.price) + "' data-delta-sort='" + escHtml(row.deltaSort || 0) + "' data-status-sort='" + escHtml(row.statusSort || 999) + "' data-visual-sort='" + escHtml(row.visualSort || 0) + "'><td>" + escHtml(i + 1) + "</td><td>" + thumbHtml + "</td><td class='mono'>" + fileHtml + "</td><td>" + escHtml(row.qty) + "</td><td>" + escHtml(row.printType) + "</td><td>" + escHtml(formatMoney(row.price, row.currency)) + "</td><td class='note-cell'>" + escHtml(row.note) + "</td><td>" + escHtml(row.match) + "</td><td>" + escHtml(row.orderSize) + "</td><td>" + escHtml(row.outputSize) + "</td><td>" + escHtml(row.delta) + "</td><td>" + escHtml(row.status) + "</td><td class='review-cell'><input type='checkbox' onclick='toggleReviewed(this)'></td></tr>");
+        html.push("<tr class='" + escHtml(row.rowClass) + "' data-row-index='" + escHtml(i) + "' data-file-sort='" + escHtml((row.file || '').toLowerCase()) + "' data-qty-sort='" + escHtml(row.qty) + "' data-print-sort='" + escHtml(row.printSort || '') + "' data-price-sort='" + escHtml(isNaN(row.price) ? -1 : row.price) + "' data-delta-sort='" + escHtml(row.deltaSort || 0) + "' data-status-sort='" + escHtml(row.statusSort || 999) + "' data-visual-sort='" + escHtml(row.visualSort || 0) + "'><td>" + escHtml(i + 1) + "</td><td>" + thumbHtml + "</td><td class='mono'>" + fileHtml + "</td><td>" + escHtml(row.qty) + "</td><td>" + escHtml(row.printType) + "</td><td>" + escHtml(formatMoney(row.price, row.currency)) + "</td><td class='note-cell'>" + escHtml(row.note) + "</td><td>" + escHtml(row.orderSize) + "</td><td>" + escHtml(row.outputSize) + "</td><td>" + escHtml(row.delta) + "</td><td>" + escHtml(formatStatusForReport(row)) + "</td><td class='review-cell'><input type='checkbox' onclick='toggleReviewed(this)'></td></tr>");
     }
     html.push("</tbody></table></div></div></body></html>");
     return html.join("\r\n");
@@ -1482,7 +1488,7 @@ var bottomRow = dlg.add("group");
 bottomRow.orientation = "row";
 bottomRow.alignment = "fill";
 bottomRow.alignChildren = ["fill", "center"];
-var versionText = bottomRow.add("statictext", undefined, "v1.65");
+var versionText = bottomRow.add("statictext", undefined, "v1.66");
 versionText.alignment = "left";
 var btns = bottomRow.add("group");
 btns.alignment = "right";
