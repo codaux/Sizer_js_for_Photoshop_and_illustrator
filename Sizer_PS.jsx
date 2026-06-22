@@ -1,6 +1,6 @@
 #target photoshop
 // Sizer Photoshop
-// Version: 1.64
+// Version: 1.65
 app.bringToFront();
 var oldDisplayDialogs = app.displayDialogs;
 app.displayDialogs = DialogModes.NO;
@@ -1478,7 +1478,13 @@ rightCol.margins = 12;
 var emailInput = rightCol.add("edittext", undefined, "", { multiline: true, scrolling: true });
 emailInput.preferredSize = [650, 430];
 
-var btns = dlg.add("group");
+var bottomRow = dlg.add("group");
+bottomRow.orientation = "row";
+bottomRow.alignment = "fill";
+bottomRow.alignChildren = ["fill", "center"];
+var versionText = bottomRow.add("statictext", undefined, "v1.65");
+versionText.alignment = "left";
+var btns = bottomRow.add("group");
 btns.alignment = "right";
 btns.add("button", undefined, "Cancel");
 btns.add("button", undefined, "Run", { name: "ok" });
