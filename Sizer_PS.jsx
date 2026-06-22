@@ -1,6 +1,6 @@
 #target photoshop
 // Sizer Photoshop
-// Version: 1.66
+// Version: 1.67
 app.bringToFront();
 var oldDisplayDialogs = app.displayDialogs;
 app.displayDialogs = DialogModes.NO;
@@ -504,6 +504,7 @@ function calculateAdjustedPrice(orderW, orderH, actualW, actualH, currentPrice) 
 }
 
 function formatResizeModeLabel(mode) {
+    if (mode === "noResize") return "No Resize";
     if (mode === "respectWidth") return "Respect Width";
     if (mode === "respectHeight") return "Respect Height";
     if (mode === "stretch") return "Stretch";
@@ -1437,6 +1438,7 @@ resizePanel.margins = 12;
 var rbW = resizePanel.add("radiobutton", undefined, "Respect Width (keep aspect ratio)");
 var rbH = resizePanel.add("radiobutton", undefined, "Respect Height (keep aspect ratio)");
 var rbS = resizePanel.add("radiobutton", undefined, "Stretch (exact Width + Height)");
+var rbNoResize = resizePanel.add("radiobutton", undefined, "No Resize");
 rbW.value = true;
 
 var printTypePanel = leftCol.add("panel", undefined, "Sort by Print Type");
@@ -1488,7 +1490,7 @@ var bottomRow = dlg.add("group");
 bottomRow.orientation = "row";
 bottomRow.alignment = "fill";
 bottomRow.alignChildren = ["fill", "center"];
-var versionText = bottomRow.add("statictext", undefined, "v1.66");
+var versionText = bottomRow.add("statictext", undefined, "v1.67");
 versionText.alignment = "left";
 var btns = bottomRow.add("group");
 btns.alignment = "right";
@@ -1500,7 +1502,7 @@ if (dlg.show() !== 1) {
     alert("Operation cancelled");
 } else {
     var qtyInFilename = rbFilenameQty.value ? "filenameQty" : (rbQtyFilename.value ? "qtyFilename" : "filename");
-    var resizeMode = rbH.value ? "respectHeight" : (rbS.value ? "stretch" : "respectWidth");
+    var resizeMode = rbNoResize.value ? "noResize" : (rbH.value ? "respectHeight" : (rbS.value ? "stretch" : "respectWidth"));
     var printTypeMode = rbPrintFolder.value ? "folder" : (rbPrintPrefix.value ? "prefix" : "none");
     var runWeMustAction = !!runWeMustChk.value;
     var generateProof = !!generateProofChk.value;
@@ -1706,7 +1708,7 @@ if (dlg.show() !== 1) {
                                     var targetHeightPx = Math.round(item.height * TARGET_DPI);
                                     if (resizeMode === "stretch") doc.resizeImage(UnitValue(targetWidthPx, "px"), UnitValue(targetHeightPx, "px"), TARGET_DPI, RESAMPLE);
                                     else if (resizeMode === "respectWidth") doc.resizeImage(UnitValue(targetWidthPx, "px"), undefined, TARGET_DPI, RESAMPLE);
-                                    else doc.resizeImage(undefined, UnitValue(targetHeightPx, "px"), TARGET_DPI, RESAMPLE);
+                                    else if (resizeMode === "respectHeight") doc.resizeImage(undefined, UnitValue(targetHeightPx, "px"), TARGET_DPI, RESAMPLE);
 
                                     if (runWeMustAction) {
                                         var actionResult = runActionIfNeeded(true, "WeMust", "WeMust");
