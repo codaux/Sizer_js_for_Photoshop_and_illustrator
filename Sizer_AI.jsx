@@ -1,6 +1,6 @@
 #target illustrator
 // Sizer Illustrator
-// Version: 1.63
+// Version: 1.64
 
 var oldUserInteractionLevel = app.userInteractionLevel;
 app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
@@ -1457,16 +1457,28 @@ function writeManagedTextFile(fileObj, text){
     };
 }
 
+function hideFileBestEffort(fileObjOrPath) {
+    try {
+        var f = fileObjOrPath && fileObjOrPath.fsName ? fileObjOrPath : new File(String(fileObjOrPath));
+        if (f && f.exists) f.hidden = true;
+    } catch (e) {}
+}
+
+function writeHiddenManagedTextFile(fileObj, text) {
+    var result = writeManagedTextFile(fileObj, text);
+    if (result && result.ok && result.path) hideFileBestEffort(result.path);
+    return result;
+}
 function writeFinalLog(logFileObj, logBufferParts, reportMeta, reportRows){
-    return writeManagedTextFile(logFileObj, buildFinalLogText(logBufferParts, reportMeta, reportRows));
+    return writeHiddenManagedTextFile(logFileObj, buildFinalLogText(logBufferParts, reportMeta, reportRows));
 }
 
 function writeDiagnosticsFiles(exportFolder, diagnosticsState, baseName){
     ensureFolder(exportFolder);
     var textFile = new File(exportFolder.fsName + "/" + baseName + ".txt");
     var jsonFile = new File(exportFolder.fsName + "/" + baseName + ".json");
-    var textResult = writeManagedTextFile(textFile, buildDiagnosticsText(diagnosticsState));
-    var jsonResult = writeManagedTextFile(jsonFile, buildDiagnosticsJson(diagnosticsState));
+    var textResult = writeHiddenManagedTextFile(textFile, buildDiagnosticsText(diagnosticsState));
+    var jsonResult = writeHiddenManagedTextFile(jsonFile, buildDiagnosticsJson(diagnosticsState));
     return {
         text: createManagedWriteDescriptor(textFile, textResult),
         json: createManagedWriteDescriptor(jsonFile, jsonResult)

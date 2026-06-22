@@ -1,6 +1,6 @@
 #target photoshop
 // Sizer Photoshop
-// Version: 1.63
+// Version: 1.64
 app.bringToFront();
 var oldDisplayDialogs = app.displayDialogs;
 app.displayDialogs = DialogModes.NO;
@@ -1329,8 +1329,20 @@ function writeManagedTextFile(fileObj, text) {
     };
 }
 
+function hideFileBestEffort(fileObjOrPath) {
+    try {
+        var f = fileObjOrPath && fileObjOrPath.fsName ? fileObjOrPath : new File(String(fileObjOrPath));
+        if (f && f.exists) f.hidden = true;
+    } catch (e) {}
+}
+
+function writeHiddenManagedTextFile(fileObj, text) {
+    var result = writeManagedTextFile(fileObj, text);
+    if (result && result.ok && result.path) hideFileBestEffort(result.path);
+    return result;
+}
 function initManagedLog(fileObj, headerText) {
-    var result = writeManagedTextFile(fileObj, headerText);
+    var result = writeHiddenManagedTextFile(fileObj, headerText);
     return { path: result.path, warning: result.warning || "", error: result.ok ? "" : result.error };
 }
 
@@ -1346,6 +1358,7 @@ function appendManagedLog(logState, text) {
     var fallbackFile = new File(tempDir.fsName + "/" + stripExt(currentFile.name) + "__" + stamp + ".txt");
     var fallbackWrite = writeTextFile(fallbackFile, "[Log continued after append failure]\r\n" + text);
     if (fallbackWrite.ok) {
+        hideFileBestEffort(fallbackFile);
         if (!logState.warning) logState.warning = "Primary log path became unavailable. Continued in fallback log.";
         logState.path = fallbackFile.fsName;
     } else if (!logState.error) {
@@ -1354,15 +1367,15 @@ function appendManagedLog(logState, text) {
 }
 
 function writeFinalLog(logFileObj, logBufferParts, reportMeta, reportRows) {
-    return writeManagedTextFile(logFileObj, buildFinalLogText(logBufferParts, reportMeta, reportRows));
+    return writeHiddenManagedTextFile(logFileObj, buildFinalLogText(logBufferParts, reportMeta, reportRows));
 }
 
 function writeDiagnosticsFiles(exportFolder, diagnosticsState, baseName) {
     ensureFolder(exportFolder);
     var textFile = new File(exportFolder.fsName + "/" + baseName + ".txt");
     var jsonFile = new File(exportFolder.fsName + "/" + baseName + ".json");
-    var textResult = writeManagedTextFile(textFile, buildDiagnosticsText(diagnosticsState));
-    var jsonResult = writeManagedTextFile(jsonFile, buildDiagnosticsJson(diagnosticsState));
+    var textResult = writeHiddenManagedTextFile(textFile, buildDiagnosticsText(diagnosticsState));
+    var jsonResult = writeHiddenManagedTextFile(jsonFile, buildDiagnosticsJson(diagnosticsState));
     return {
         text: createManagedWriteDescriptor(textFile, textResult),
         json: createManagedWriteDescriptor(jsonFile, jsonResult)
