@@ -693,12 +693,18 @@ function parseEmailItemsUS(emailText, diagnosticsState) {
         var noteLabelIdx = findLineIndexEquals(lines, "Note for designers", 0);
         var fileInfo = fileLabelIdx >= 0 ? findNextNonEmptyLine(lines, fileLabelIdx + 1) : { index: -1, text: "" };
         var sizeInfo = sizeLabelIdx >= 0 ? findNextNonEmptyLine(lines, sizeLabelIdx + 1) : { index: -1, text: "" };
-        var qty = 1;
-        for (var q = lines.length - 1; q >= 0; q--) {
-            var candidate = trimStr(lines[q]);
-            if (/^\d+$/.test(candidate)) {
-                qty = parseInt(candidate, 10);
-                break;
+        // New Wemust US order text puts quantity and price on the same line
+        // (for example: "170    $2.58"). Keep the integer-only fallback for
+        // older copied order formats.
+        var qp = extractQtyAndPrice(block);
+        var qty = (!isNaN(qp.price) && qp.qty > 0) ? qp.qty : 1;
+        if (isNaN(qp.price)) {
+            for (var q = lines.length - 1; q >= 0; q--) {
+                var candidate = trimStr(lines[q]);
+                if (/^\d+$/.test(candidate)) {
+                    qty = parseInt(candidate, 10);
+                    break;
+                }
             }
         }
 
@@ -739,8 +745,8 @@ function parseEmailItemsUS(emailText, diagnosticsState) {
             productLabel: productLabel,
             printType: detectPrintType(productLabel + "\n" + nearbyText),
             note: note,
-            price: NaN,
-            currency: "$",
+            price: qp.price,
+            currency: qp.currency || "$",
             matchInfo: null
         });
     }
